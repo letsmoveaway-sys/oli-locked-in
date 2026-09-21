@@ -11,11 +11,18 @@
     {
       "binding": "DB",
       "database_name": "gcse-revision-db",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "6d689ade-5672-49e7-a833-3b2ea3d07a4f",
       "migrations_dir": "database/migrations"
     }
   ],
+  "ratelimits": [
+    {
+      "name": "LOGIN_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
   "vars": {
-    "ENVIRONMENT": "development"
+    "ENVIRONMENT": "production"
   }
 }

@@ -55,6 +55,18 @@ describe('API role enforcement', () => {
     expect(response.headers.get('Set-Cookie')).toContain('SameSite=Strict')
   })
 
+  it('limits repeated sign-in attempts before checking the database', async () => {
+    const response = await handleApi(new Request('https://example.test/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://example.test' },
+      body: JSON.stringify({ username: 'student', password: 'wrong-password' }),
+    }), {
+      ...env,
+      LOGIN_RATE_LIMITER: { limit: async () => ({ success: false }) } as Env['LOGIN_RATE_LIMITER'],
+    })
+    expect(response.status).toBe(429)
+  })
+
   it('rejects a Student account from Parent operations', async () => {
     const token = await createSessionToken(
       { id: 'student-1', username: 'student', displayName: 'Student', role: 'student' },

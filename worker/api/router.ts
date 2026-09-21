@@ -49,6 +49,11 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     return apiError('INVALID_REQUEST', 'Enter a valid username and password.', 400)
   }
 
+  if (env.LOGIN_RATE_LIMITER) {
+    const { success } = await env.LOGIN_RATE_LIMITER.limit({ key: username })
+    if (!success) return apiError('RATE_LIMITED', 'Too many sign-in attempts. Try again in a minute.', 429)
+  }
+
   const user = await env.DB.prepare(
     `SELECT id, email_or_username, display_name, role, active
      FROM users WHERE lower(email_or_username) = ? LIMIT 1`,

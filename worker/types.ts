@@ -1,9 +1,10 @@
-import type { D1Database } from '@cloudflare/workers-types'
+import type { D1Database, RateLimit } from '@cloudflare/workers-types'
 
 export type UserRole = 'student' | 'parent'
 
 export interface Env {
   DB: D1Database
+  LOGIN_RATE_LIMITER?: RateLimit
   ENVIRONMENT: string
   STUDENT_PASSWORD_HASH: string
   PARENT_PASSWORD_HASH: string

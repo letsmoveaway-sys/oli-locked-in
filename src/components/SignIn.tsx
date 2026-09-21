@@ -64,6 +64,7 @@ export function SignIn({ onSignedIn }: SignInProps) {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        <p className="demo-entry"><span>Want to see how it works?</span> <a href="/demo">Explore the public demo</a></p>
       </section>
     </main>
   )

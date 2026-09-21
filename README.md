@@ -60,6 +60,8 @@ Tests cover password/session security, API authentication and role enforcement, 
 
 ## Learn and practise
 
+The public `/demo` page lets visitors try a sample revision session, an original History question, a weekly availability change and a Parent summary without signing in. It uses browser-only example data, makes no API requests and resets when the visitor leaves. The private Student and Parent accounts remain behind sign-in.
+
 Open **Learn & practise** after signing in. Confirmed subjects include:
 
 - the relevant exam-board paper structure and assessment objectives;
@@ -121,6 +123,8 @@ These steps require you to sign into your own Cloudflare account; do not share t
    npx wrangler secret put PARENT_PASSWORD_HASH
    npx wrangler secret put SESSION_SECRET
    ```
+
+   Generate hashes with the current `npm run auth:hash` script. Cloudflare's Worker PBKDF2 implementation rejects the older 210,000-iteration hashes; the script now uses 100,000 iterations. Use long, unique passwords and keep the production passwords in a password manager.
 
 6. Change `ENVIRONMENT` in `wrangler.jsonc` to `production`, run `npm run check`, then deploy with `npm run deploy`.
 
