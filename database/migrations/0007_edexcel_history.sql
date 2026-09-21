@@ -1,0 +1,67 @@
+-- Confirmed Pearson Edexcel GCSE History (1HI0), options 11, B4, P3 and 31.
+-- Keep legacy topic rows for any existing revision evidence, but hide them.
+INSERT OR IGNORE INTO subjects (id, name, exam_board, specification_code)
+VALUES ('subject-history', 'History', 'Edexcel', '1HI0');
+
+UPDATE subjects SET exam_board = 'Edexcel', specification_code = '1HI0', updated_at = CURRENT_TIMESTAMP
+WHERE id = 'subject-history';
+
+UPDATE student_subjects
+SET tier = 'not_applicable', options_json = json_set(options_json, '$.configuration', 'confirmed'), updated_at = CURRENT_TIMESTAMP
+WHERE subject_id = 'subject-history';
+
+UPDATE topics SET active = 0, updated_at = CURRENT_TIMESTAMP
+WHERE subject_id = 'subject-history' AND exam_board <> 'Edexcel';
+
+DELETE FROM course_components WHERE subject_id = 'subject-history' AND id <> 'history-1hi0-paper-1' AND id <> 'history-1hi0-paper-2' AND id <> 'history-1hi0-paper-3';
+DELETE FROM revision_resources WHERE subject_id = 'subject-history' AND id NOT IN ('res-history-edexcel-spec', 'res-history-edexcel-papers');
+
+INSERT OR IGNORE INTO course_components
+  (id, subject_id, name, component_code, calculator_allowed, duration_minutes, maximum_marks, weighting_percent, tier, sort_order, source_reference)
+VALUES
+  ('history-1hi0-paper-1', 'subject-history', 'Paper 1: Medicine in Britain and the Western Front', '1HI0/11', 0, 80, 52, 30, 'both', 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf'),
+  ('history-1hi0-paper-2', 'subject-history', 'Paper 2: The American West and Early Elizabethan England', '1HI0/2M', 0, 110, 64, 40, 'both', 2, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf'),
+  ('history-1hi0-paper-3', 'subject-history', 'Paper 3: Weimar and Nazi Germany', '1HI0/31', 0, 90, 52, 30, 'both', 3, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf');
+
+INSERT OR IGNORE INTO topics
+  (id, subject_id, parent_topic_id, component, name, description, exam_board, specification_code, tier, estimated_effort, importance, source_reference, specification_version, applicability)
+VALUES
+  ('history-edexcel-medicine', 'subject-history', NULL, 'Paper 1', 'Medicine in Britain, c1250–present', 'Thematic study of causes, prevention and treatment, plus the British sector of the Western Front, 1914–18.', 'Edexcel', '1HI0', 'both', 12, 0, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-elizabeth', 'subject-history', NULL, 'Paper 2 Booklet B', 'Early Elizabethan England, 1558–88', 'British depth study: government and religion, challenges at home and abroad, society and exploration.', 'Edexcel', '1HI0', 'both', 9, 0, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-west', 'subject-history', NULL, 'Paper 2 Booklet P', 'The American West, c1835–c1895', 'Period study: early settlement, development of the Plains and later changes and conflicts.', 'Edexcel', '1HI0', 'both', 9, 0, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-germany', 'subject-history', NULL, 'Paper 3', 'Weimar and Nazi Germany, 1918–39', 'Modern depth study: Weimar, Hitler’s rise, Nazi dictatorship and life in Nazi Germany.', 'Edexcel', '1HI0', 'both', 12, 0, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-medieval', 'subject-history', 'history-edexcel-medicine', 'Paper 1', 'Medicine in medieval England, c1250–c1500', 'Four Humours, Galen, religious ideas, treatment and care, and the Black Death.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-renaissance', 'subject-history', 'history-edexcel-medicine', 'Paper 1', 'The Medical Renaissance, c1500–c1700', 'Sydenham, Vesalius and Harvey; continuity in care; the Great Plague of 1665.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-industrial', 'subject-history', 'history-edexcel-medicine', 'Paper 1', 'Medicine in Britain, c1700–c1900', 'Germ theory, Jenner, vaccination, surgery, public health and cholera.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-modern-medicine', 'subject-history', 'history-edexcel-medicine', 'Paper 1', 'Medicine in modern Britain, c1900–present', 'Genetics, diagnosis, antibiotics, the NHS, treatment and prevention.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-western-front', 'subject-history', 'history-edexcel-medicine', 'Paper 1', 'The British sector of the Western Front, 1914–18', 'Trench injuries, evacuation, treatment innovations and using sources for historical enquiries.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-elizabeth-government', 'subject-history', 'history-edexcel-elizabeth', 'Paper 2 Booklet B', 'Queen, government and religion, 1558–69', 'Elizabeth’s accession, government, religious settlement and early religious challenges.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-elizabeth-challenges', 'subject-history', 'history-edexcel-elizabeth', 'Paper 2 Booklet B', 'Challenges to Elizabeth, 1569–88', 'Mary Queen of Scots, plots, Spain, the Netherlands and the Spanish Armada.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-elizabeth-society', 'subject-history', 'history-edexcel-elizabeth', 'Paper 2 Booklet B', 'Elizabethan society and exploration, 1558–88', 'Education, leisure, poverty, voyages of discovery and Raleigh’s Virginia.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-west-early', 'subject-history', 'history-edexcel-west', 'Paper 2 Booklet P', 'Early settlement of the West, c1835–c1862', 'Indigenous peoples of the Plains, migration, early settlement and tensions.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-west-plains', 'subject-history', 'history-edexcel-west', 'Paper 2 Booklet P', 'Development of the Plains, c1862–c1876', 'Homesteads, railroads, cattle ranching and the impact of US policy on Indigenous peoples.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-west-later', 'subject-history', 'history-edexcel-west', 'Paper 2 Booklet P', 'Later developments in the West, c1876–c1895', 'Farming and cattle changes, conflicts, reservations and the end of the frontier.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-germany-weimar', 'subject-history', 'history-edexcel-germany', 'Paper 3', 'The Weimar Republic, 1918–29', 'Origins, early crises, recovery, culture and changing roles for women.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-germany-rise', 'subject-history', 'history-edexcel-germany', 'Paper 3', 'Hitler’s rise to power, 1919–33', 'Nazi Party development, Munich Putsch, Depression, elections and Hitler’s appointment.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-germany-control', 'subject-history', 'history-edexcel-germany', 'Paper 3', 'Nazi control and dictatorship, 1933–39', 'Creation of dictatorship, police state, propaganda and opposition.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common'),
+  ('history-edexcel-germany-life', 'subject-history', 'history-edexcel-germany', 'Paper 3', 'Life in Nazi Germany, 1933–39', 'Women, young people, work, living standards and persecution.', 'Edexcel', '1HI0', 'both', 3, 1, 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'Issue 6; first assessment 2026', 'common');
+
+INSERT INTO subject_revision_guides
+  (subject_id, exam_summary, assessment_objectives_json, exam_tips_json, specification_url, assessment_resources_url, provisional, verified_at)
+VALUES
+  ('subject-history', 'Pearson Edexcel GCSE History 1HI0: Paper 1 Medicine in Britain and the Western Front (1 hour 20 minutes, 52 marks, 30%); Paper 2 The American West and Early Elizabethan England (1 hour 50 minutes, 64 marks, 40%); Paper 3 Weimar and Nazi Germany (1 hour 30 minutes, 52 marks, 30%). The four options are confirmed.', '["AO1: demonstrate knowledge and understanding of key features and characteristics of the periods studied","AO2: explain and analyse historical events and periods using second-order concepts","AO3: analyse, evaluate and use sources to make substantiated judgements","AO4: analyse, evaluate and make substantiated judgements about interpretations"]', '["Use precise dates, people and events from the correct option","Explain causation, consequence, change or significance when the question asks for it","For the Western Front, assess sources in the context of the enquiry","For Germany, compare interpretations and explain why they differ","Allow time for spelling, punctuation, grammar and specialist terminology where assessed"]', 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 'https://qualifications.pearson.com/en/qualifications/edexcel-gcses/history-2016.coursematerials.html', 0, '2026-09-21')
+ON CONFLICT(subject_id) DO UPDATE SET
+  exam_summary = excluded.exam_summary,
+  assessment_objectives_json = excluded.assessment_objectives_json,
+  exam_tips_json = excluded.exam_tips_json,
+  specification_url = excluded.specification_url,
+  assessment_resources_url = excluded.assessment_resources_url,
+  provisional = excluded.provisional,
+  verified_at = excluded.verified_at,
+  updated_at = CURRENT_TIMESTAMP;
+
+INSERT OR IGNORE INTO revision_resources
+  (id, subject_id, topic_id, title, provider, resource_type, description, url, free_access, sort_order, verified_at)
+VALUES
+  ('res-history-edexcel-spec', 'subject-history', NULL, 'Edexcel GCSE History 1HI0 specification', 'Pearson Edexcel', 'specification', 'Issue 6 content and assessment for the four selected options.', 'https://qualifications.pearson.com/content/dam/pdf/GCSE/History/2016/specification-and-sample-assessments/gcse-9-1-history-specification.pdf', 1, 1, '2026-09-21'),
+  ('res-history-edexcel-papers', 'subject-history', NULL, 'Exam papers and mark schemes', 'Pearson Edexcel', 'past_papers', 'Select papers 11, 2M and 31 for this course.', 'https://qualifications.pearson.com/en/qualifications/edexcel-gcses/history-2016.coursematerials.html', 1, 2, '2026-09-21');

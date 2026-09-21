@@ -1,0 +1,7 @@
+# Generate these values with: npm run auth:hash -- "a-long-unique-password"
+STUDENT_PASSWORD_HASH="replace-with-generated-value"
+PARENT_PASSWORD_HASH="replace-with-generated-value"
+# Generate at least 32 random bytes, for example with a password manager.
+SESSION_SECRET="replace-with-a-long-random-secret"
+ENVIRONMENT="development"
+

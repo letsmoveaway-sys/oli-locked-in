@@ -1,0 +1,58 @@
+import { readFileSync } from 'node:fs'
+import { expect, test } from '@playwright/test'
+
+const { studentPassword } = JSON.parse(readFileSync('.e2e/auth.json', 'utf8')) as { studentPassword: string }
+
+test('student can learn a topic and check an answer', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Username or email').fill('student')
+  await page.getByLabel('Password').fill(studentPassword)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('button', { name: 'Learn & practise' }).click()
+  await expect(page.getByRole('heading', { name: 'What you will be tested on' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Exam papers and mark schemes/ }).first()).toBeVisible()
+  const medicine = page.locator('.topic-list details').filter({ has: page.getByText('Medicine in Britain, c1250–present', { exact: true }) }).first()
+  await medicine.locator('summary').click()
+  await medicine.getByRole('button', { name: 'Learn and practise' }).first().click()
+  await expect(page.getByRole('heading', { name: 'Understand the topic first' })).toBeVisible()
+  await page.getByRole('button', { name: '2. Worked examples' }).click()
+  await expect(page.getByRole('heading', { name: 'See how to work it through' })).toBeVisible()
+  await page.getByRole('button', { name: '3. Test yourself' }).click()
+  const testQuestions = await page.locator('.auto-test fieldset').all()
+  for (const question of testQuestions) await question.locator('label').first().click()
+  await page.getByRole('button', { name: 'Finish and mark test' }).click()
+  await expect(page.getByRole('heading', { name: 'Answer review' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /official specification content/ })).toBeVisible()
+})
+
+test('student signs in, completes revision and sees updated evidence', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Username or email').fill('student')
+  await page.getByLabel('Password').fill(studentPassword)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('heading', { name: 'Your revision for today' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Subjects' }).click()
+  const history = page.locator('.subject-overview').filter({ hasText: 'History' })
+  await history.locator('summary').click()
+  const topicButton = history.locator('.subject-topic-list button').first()
+  const topicName = await topicButton.locator('strong').innerText()
+  await topicButton.click()
+  await page.getByRole('button', { name: 'Revise now' }).click()
+
+  const session = page.locator('.today-session').filter({ hasText: 'Revision now' }).filter({ has: page.getByRole('button', { name: 'Complete' }) }).first()
+  await expect(session).toContainText(topicName)
+  await session.getByRole('button', { name: 'Complete' }).click()
+  await page.getByLabel('Actual time spent (minutes)').fill('12')
+  await page.getByRole('button', { name: 'Confident', exact: true }).click()
+  await page.getByLabel('Quick-check score % optional').fill('80')
+  await page.getByLabel('Notes optional').fill('E2E completion evidence')
+  await page.getByRole('button', { name: 'Save and finish' }).click()
+  await expect(page.getByRole('status')).toContainText('Session completed')
+  await expect(page.getByText(/XP total/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Subjects' }).click()
+  await history.locator('summary').click()
+  await history.getByRole('button', { name: new RegExp(topicName) }).click()
+  await expect(page.locator('.saved-notes')).toHaveText('E2E completion evidence')
+})
