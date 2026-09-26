@@ -33,6 +33,7 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onVie
   const [confidenceAfter, setConfidenceAfter] = useState<Confidence>('ok')
   const [assessment, setAssessment] = useState('')
   const [notes, setNotes] = useState('')
+  const [reviewScores, setReviewScores] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const plannedMinutes = todaySessions.filter((item) => item.status === 'planned' || item.status === 'tutor').reduce((sum, item) => sum + item.plannedMinutes, 0)
   const weekSessions = sessions.slice().sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)).slice(0, 14)
@@ -47,6 +48,7 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onVie
     setConfidenceAfter('ok')
     setAssessment('')
     setNotes('')
+    setReviewScores(Object.fromEntries((session.reviewItems ?? []).map((item) => [item.topicId, ''])))
   }
 
   async function submitCompletion(event: FormEvent<HTMLFormElement>) {
@@ -60,6 +62,10 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onVie
         confidenceAfter,
         assessmentPercentage: assessment === '' ? null : Number(assessment),
         notes,
+        reviewResults: (activeSession.reviewItems ?? []).map((item) => ({
+          topicId: item.topicId,
+          percentage: reviewScores[item.topicId] === '' ? null : Number(reviewScores[item.topicId]),
+        })),
       })
       setActiveSession(null)
       setStartedSession('')
@@ -95,6 +101,13 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onVie
                     <p>{session.subjectName} · {session.sessionType}</p><h3>{session.topicName}</h3>
                     <span className={`rag-label rag--${topic?.ragStatus ?? 'grey'}`}>{topic?.ragStatus ?? (isTutor ? 'Tutor' : 'Not assessed')}</span>
                     <p className="reason">Why this is here: {session.plannerReason}</p>
+                    {(session.reviewItems ?? []).length ? <div className="review-agenda">
+                      <strong>Memory review from earlier learning</strong>
+                      <ol><li>Without notes, write or say what you remember.</li><li>Attempt a few questions, quotations or key steps.</li><li>Then check the topic and correct any gaps.</li></ol>
+                      {(session.reviewItems ?? []).map((item) => <div className="review-agenda__item" key={item.topicId}><p><span>{item.plannedMinutes} min · {item.subjectName}</span>{item.topicName}<small>{item.reason}</small></p><button className="text-button" onClick={() => onViewTopic(item.topicId)} type="button">Open after recall</button></div>)}
+                    </div> : session.sessionType === 'Spaced retrieval review'
+                      ? <p className="new-learning-note">Memory review: try the topic from memory before reopening the lesson notes.</p>
+                      : <p className="new-learning-note">Main focus: learn or strengthen this topic.</p>}
                     {startedSession === session.id ? <p className="started-note" role="status">Session started — stay focused, then record how it went.</p> : null}
                   </div>
                   {editable && session.status === 'planned' && !isTutor ? (
@@ -131,6 +144,7 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onVie
             <label>Actual time spent (minutes)<input autoFocus min="1" max="360" onChange={(event) => setActualMinutes(event.target.value)} required type="number" value={actualMinutes} /></label>
             <fieldset><legend>How do you feel now?</legend><div className="confidence-buttons">{confidenceOptions.map((option) => <button aria-pressed={confidenceAfter === option.value} key={option.value} onClick={() => setConfidenceAfter(option.value)} type="button">{option.label}</button>)}</div></fieldset>
             <label>Quick-check score % <span className="optional">optional</span><input min="0" max="100" onChange={(event) => setAssessment(event.target.value)} type="number" value={assessment} /></label>
+            {(activeSession.reviewItems ?? []).length ? <fieldset className="review-results"><legend>Earlier learning: retrieval checks</legend><p>Try to answer from memory before checking notes. Record the score so the next review can be timed properly.</p>{(activeSession.reviewItems ?? []).map((item) => <label key={item.topicId}>{item.topicName} % <span className="optional">optional</span><input min="0" max="100" onChange={(event) => setReviewScores({ ...reviewScores, [item.topicId]: event.target.value })} type="number" value={reviewScores[item.topicId] ?? ''} /></label>)}</fieldset> : null}
             <label>Notes <span className="optional">optional</span><textarea maxLength={1000} onChange={(event) => setNotes(event.target.value)} placeholder="What went well, or what should you revisit?" value={notes} /></label>
             <div className="modal-actions"><button className="secondary" onClick={() => setActiveSession(null)} type="button">Cancel</button><button disabled={busy} type="submit">Save and finish</button></div>
           </form>

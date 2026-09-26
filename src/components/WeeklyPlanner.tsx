@@ -37,6 +37,7 @@ export function WeeklyPlanner({ sessions, topics, onMove, onReplan, onViewTopic,
                   const topic = topics.find((item) => item.topicId === session.topicId)
                   return <article className={`week-session week-session--${session.source}`} key={session.id}>
                     <p>{new Date(session.scheduledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} · {session.plannedMinutes}m</p><h3>{session.subjectName}</h3><span>{session.topicName}</span>
+                    {(session.reviewItems ?? []).map((item) => <small className="session-review" key={item.topicId}>Review: {item.topicName}</small>)}
                     <span className={`rag-dot rag-dot--${topic?.ragStatus ?? 'grey'}`} aria-label={topic?.ragStatus ?? 'not assessed'} />
                     {session.status === 'planned' && session.source !== 'tutor' ? <div><button className="text-button" onClick={() => session.topicId && onViewTopic(session.topicId)} type="button">Topic</button>{editable ? <button className="text-button" onClick={() => void onMove(session.id)} type="button">Postpone / swap</button> : null}</div> : <small className="session-status">{session.status}</small>}
                   </article>

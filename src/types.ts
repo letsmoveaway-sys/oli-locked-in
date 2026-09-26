@@ -82,6 +82,14 @@ export interface PlanSession {
   plannerReason: string
   source: 'generated' | 'manual' | 'tutor'
   locked: boolean
+  reviewItems?: Array<{
+    topicId: string
+    subjectId: string
+    subjectName: string
+    topicName: string
+    plannedMinutes: number
+    reason: string
+  }>
 }
 
 export interface WeeklyAvailability {
@@ -96,6 +104,7 @@ export interface SessionCompletionInput {
   confidenceAfter: Confidence
   assessmentPercentage: number | null
   notes: string
+  reviewResults: Array<{ topicId: string; percentage: number | null }>
 }
 
 export interface TopicDetail extends TopicProgress {

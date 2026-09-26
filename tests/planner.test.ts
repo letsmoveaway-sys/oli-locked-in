@@ -20,6 +20,7 @@ function topic(overrides: Partial<PlannerTopic> = {}): PlannerTopic {
     ragStatus: 'red',
     latestAssessment: null,
     lastRevisedAt: null,
+    nextReviewAt: null,
     estimatedEffort: 5,
     importance: 1,
     manualPriority: null,
@@ -126,6 +127,35 @@ describe('adaptive planner', () => {
     }), 1).filter((session) => session.source === 'generated')
 
     expect(plan.map((session) => session.topicId)).toEqual(['topic-maths', 'topic-geometry'])
+  })
+
+  it('balances all active subjects across the planning horizon', () => {
+    const subjects = [
+      topic(),
+      topic({ id: 'topic-science', subjectId: 'science', subjectName: 'Science', name: 'Cells' }),
+      topic({ id: 'topic-language', subjectId: 'language', subjectName: 'English Language', name: 'Creative reading' }),
+      topic({ id: 'topic-literature', subjectId: 'literature', subjectName: 'English Literature', name: 'Macbeth' }),
+      topic({ id: 'topic-history', subjectId: 'history', subjectName: 'History', name: 'Medicine' }),
+    ]
+    const plan = generateRevisionPlan(context({ topics: subjects }), 14).filter((session) => session.source === 'generated')
+    const counts = subjects.map(({ subjectId }) => plan.filter((session) => session.subjectId === subjectId).length)
+
+    expect(counts.every((count) => count > 0)).toBe(true)
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1)
+  })
+
+  it('adds a due spaced-retrieval item to a later learning session', () => {
+    const plan = generateRevisionPlan(context({
+      availability: [{ weekday: 3, availableMinutes: 35, startTime: '17:00' }],
+      topics: [
+        topic({ masteryScore: 60, ragStatus: 'amber', lastRevisedAt: '2026-09-12T17:00:00.000Z', nextReviewAt: '2026-09-16T17:00:00.000Z' }),
+        topic({ id: 'topic-science', subjectId: 'science', subjectName: 'Science', name: 'Cells', masteryScore: null, ragStatus: 'grey' }),
+      ],
+    }), 1).filter((session) => session.source === 'generated')
+
+    expect(plan[0]?.topicId).toBe('topic-science')
+    expect(plan[0]?.sessionType).toBe('Learning + spaced review')
+    expect(plan[0]?.reviewItems).toMatchObject([{ topicId: 'topic-maths', plannedMinutes: 8 }])
   })
 
   it('does not duplicate a persisted recurring tutor occurrence', () => {

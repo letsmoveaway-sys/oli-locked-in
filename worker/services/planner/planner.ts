@@ -10,10 +10,20 @@ export interface PlannerTopic {
   ragStatus: RagStatus
   latestAssessment: number | null
   lastRevisedAt: string | null
+  nextReviewAt: string | null
   estimatedEffort: number
   importance: number
   manualPriority: number | null
   requestedMore: boolean
+}
+
+export interface PlannedReviewItem {
+  topicId: string
+  subjectId: string
+  subjectName: string
+  topicName: string
+  plannedMinutes: number
+  reason: string
 }
 
 export interface PlannerExam {
@@ -57,6 +67,7 @@ export interface PlannedSession {
   plannerReason: string
   source: 'generated' | 'manual' | 'tutor'
   locked: boolean
+  reviewItems?: PlannedReviewItem[]
 }
 
 export interface PlannerContext {
@@ -172,6 +183,25 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
   const output = [...preserved]
   const usedIds = new Set(output.map((session) => session.id))
   const workload = new Map(context.topics.map((topic) => [topic.id, calculateRemainingWorkload(topic)]))
+  const workloadBySubject = new Map<string, number>()
+  for (const topic of context.topics.filter((item) => item.active)) {
+    workloadBySubject.set(topic.subjectId, (workloadBySubject.get(topic.subjectId) ?? 0) + (workload.get(topic.id) ?? 0))
+  }
+  const activeSubjects = [...workloadBySubject.keys()]
+  const totalWorkload = [...workloadBySubject.values()].reduce((total, value) => total + value, 0)
+  const subjectTargetShare = new Map(activeSubjects.map((subjectId) => {
+    const equalShare = activeSubjects.length ? 1 / activeSubjects.length : 0
+    const workloadShare = totalWorkload ? (workloadBySubject.get(subjectId) ?? 0) / totalWorkload : equalShare
+    return [subjectId, equalShare * 0.5 + workloadShare * 0.5]
+  }))
+  const plannedBySubject = new Map<string, number>()
+  const plannedByTopic = new Map<string, number>()
+  const reviewTopicsScheduled = new Set<string>()
+  for (const session of preserved) {
+    plannedBySubject.set(session.subjectId, (plannedBySubject.get(session.subjectId) ?? 0) + 1)
+    if (session.topicId) plannedByTopic.set(session.topicId, (plannedByTopic.get(session.topicId) ?? 0) + 1)
+    for (const item of session.reviewItems ?? []) reviewTopicsScheduled.add(item.topicId)
+  }
   let previousTopicId: string | null = null
   let previousSubjectId: string | null = null
 
@@ -198,7 +228,9 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
         plannerReason: 'Recurring tutor session',
         source: 'tutor',
         locked: true,
+        reviewItems: [],
       })
+      plannedBySubject.set(tutor.subjectId, (plannedBySubject.get(tutor.subjectId) ?? 0) + 1)
       minutes -= tutor.durationMinutes
     }
 
@@ -226,10 +258,39 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
           return { topic, priority }
         })
         .sort((left, right) => right.priority - left.priority || left.topic.name.localeCompare(right.topic.name))
-      const selected = candidates.find(({ topic }) => !subjectCounts.has(topic.subjectId))
-        ?? candidates.find(({ topic }) => !topicIdsToday.has(topic.id))
-        ?? candidates[0]
+      const candidateSubjects = [...new Set(candidates.map(({ topic }) => topic.subjectId))]
+      const newSubjectsToday = candidateSubjects.filter((subjectId) => !subjectCounts.has(subjectId))
+      const subjectPool = newSubjectsToday.length ? newSubjectsToday : candidateSubjects
+      const selectedSubject = subjectPool.sort((left, right) => {
+        const leftRatio = (plannedBySubject.get(left) ?? 0) / Math.max(0.001, subjectTargetShare.get(left) ?? 0)
+        const rightRatio = (plannedBySubject.get(right) ?? 0) / Math.max(0.001, subjectTargetShare.get(right) ?? 0)
+        return leftRatio - rightRatio || (subjectTargetShare.get(right) ?? 0) - (subjectTargetShare.get(left) ?? 0) || left.localeCompare(right)
+      })[0]
+      const subjectCandidates = candidates.filter(({ topic }) => topic.subjectId === selectedSubject)
+      const freshTopicCandidates = subjectCandidates.filter(({ topic }) => !topicIdsToday.has(topic.id))
+      const topicPool = freshTopicCandidates.length ? freshTopicCandidates : subjectCandidates
+      const selected = topicPool.sort((left, right) => {
+        const countDifference = (plannedByTopic.get(left.topic.id) ?? 0) - (plannedByTopic.get(right.topic.id) ?? 0)
+        return countDifference || right.priority - left.priority || left.topic.name.localeCompare(right.topic.name)
+      })[0]
       if (!selected || selected.priority <= 0) break
+
+      const dueReviews = context.topics
+        .filter((topic) => topic.active && topic.id !== selected.topic.id && topic.lastRevisedAt && topic.nextReviewAt)
+        .filter((topic) => dateOnly(topic.nextReviewAt!) <= date && !topicIdsToday.has(topic.id) && !reviewTopicsScheduled.has(topic.id))
+        .sort((left, right) => left.nextReviewAt!.localeCompare(right.nextReviewAt!) ||
+          calculateTopicPriority(right, { today: date, exams: context.exams }) - calculateTopicPriority(left, { today: date, exams: context.exams }))
+      const reviewTopic = dueReviews[0]
+      const primaryIsDueReview = Boolean(selected.topic.lastRevisedAt && selected.topic.nextReviewAt &&
+        dateOnly(selected.topic.nextReviewAt) <= date)
+      const reviewItems: PlannedReviewItem[] = reviewTopic ? [{
+        topicId: reviewTopic.id,
+        subjectId: reviewTopic.subjectId,
+        subjectName: reviewTopic.subjectName,
+        topicName: reviewTopic.name,
+        plannedMinutes: Math.min(8, Math.max(5, context.defaultSessionMinutes - 20)),
+        reason: `Spaced retrieval from ${Math.max(1, Math.floor(daysBetween(reviewTopic.lastRevisedAt!, date)))} days ago`,
+      }] : []
 
       let generatedId = `generated-${date}-${slotIndex}`
       while (usedIds.has(generatedId)) generatedId = `${generatedId}-next`
@@ -242,15 +303,26 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
         topicName: selected.topic.name,
         scheduledAt: sessionTime(date, template?.startTime ?? null, slotIndex, context.defaultSessionMinutes),
         plannedMinutes: context.defaultSessionMinutes,
-        sessionType: 'Learn/review',
+        sessionType: reviewItems.length ? 'Learning + spaced review' : primaryIsDueReview ? 'Spaced retrieval review' : 'Focused learning',
         status: 'planned',
-        plannerReason: explanation(selected.topic, date),
+        plannerReason: reviewItems.length
+          ? `${explanation(selected.topic, date)} · includes a due memory check`
+          : primaryIsDueReview
+            ? `Review due now · retrieve what you remember before checking notes`
+            : explanation(selected.topic, date),
         source: 'generated',
         locked: false,
+        reviewItems,
       })
       workload.set(selected.topic.id, Math.max(0, (workload.get(selected.topic.id) ?? 0) - 1))
       subjectCounts.set(selected.topic.subjectId, (subjectCounts.get(selected.topic.subjectId) ?? 0) + 1)
       topicIdsToday.add(selected.topic.id)
+      plannedBySubject.set(selected.topic.subjectId, (plannedBySubject.get(selected.topic.subjectId) ?? 0) + 1)
+      plannedByTopic.set(selected.topic.id, (plannedByTopic.get(selected.topic.id) ?? 0) + 1)
+      if (reviewTopic) {
+        reviewTopicsScheduled.add(reviewTopic.id)
+        topicIdsToday.add(reviewTopic.id)
+      }
       previousTopicId = selected.topic.id
       previousSubjectId = selected.topic.subjectId
       minutes -= context.defaultSessionMinutes

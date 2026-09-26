@@ -140,7 +140,9 @@ Geography choices and case studies, Business, and the D&T specialist area remain
 
 ## Phase 4 adaptive planner
 
-The planner ranks confirmed, applicable leaf topics using mastery gap, exam proximity, time since revision, importance, incomplete coverage and manual priority. It adds modifiers for RAG state, assessment results, recent successful revision, tutor coverage and requests for more practice. It then fills the next 14 days within weekly availability while maintaining subject variety, limiting a subject to two independent sessions per day and avoiding consecutive repetition.
+The planner ranks confirmed, applicable leaf topics using mastery gap, exam proximity, time since revision, importance, incomplete coverage and manual priority. It combines an equal subject baseline with remaining workload so every active course receives regular attention without ignoring larger or weaker courses. Within each subject it rotates uncovered topics before repeating them, while RAG state, assessment results, recent successful revision, tutor coverage and requests for more practice still influence priority.
+
+Completed learning creates a dated next-review signal. When that review becomes due, the planner adds a short closed-book retrieval segment to a later session and labels it clearly as earlier learning. The Student can record a delayed-recall score separately from the main topic check; that evidence updates mastery and schedules the next interval. A typical 35-minute mixed session reserves about eight minutes for one due review, preventing retrieval work from crowding out new syllabus coverage.
 
 The development seed includes weekly availability plus alternating Tuesday Science/Mathematics tutors. Replanning preserves completed/rescheduled history and locked manual sessions, recreates tutor occurrences from their recurrence rules and replaces only unlocked future generated sessions. Availability exceptions can reduce capacity to zero and protect streaks; missed work returns to the priority pool rather than becoming an overdue list.
 

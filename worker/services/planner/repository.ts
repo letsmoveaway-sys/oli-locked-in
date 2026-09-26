@@ -3,6 +3,7 @@ import { recalculateTopicMastery } from '../progress'
 import { awardQuizXp, awardSessionXp, checkWeeklyGoal } from '../gamification'
 import type {
   PlannedSession,
+  PlannedReviewItem,
   PlannerAvailability,
   PlannerContext,
   PlannerExam,
@@ -16,8 +17,22 @@ interface AvailabilityRow { weekday: number; available_minutes: number; start_ti
 interface ExceptionRow { start_datetime: string; end_datetime: string; available_minutes: number | null; protect_streak: number; reason: string }
 interface TutorRow { id: string; subject_id: string; subject_name: string; weekday: number; start_date: string; start_time: string; duration_minutes: number; recurrence_rule: string }
 interface ExamRow { subject_id: string; exam_datetime: string }
-interface TopicRow { id: string; subject_id: string; subject_name: string; name: string; active: number; mastery_score: number | null; rag_status: PlannerTopic['ragStatus'] | null; assessment_percentage: number | null; last_revised_at: string | null; estimated_effort: number; importance: number; manual_priority: number | null }
-interface SessionRow { id: string; topic_id: string | null; subject_id: string; subject_name: string; topic_name: string | null; scheduled_at: string; planned_minutes: number; session_type: string; status: string; planner_reason: string | null; source: PlannedSession['source']; locked: number }
+interface TopicRow { id: string; subject_id: string; subject_name: string; name: string; active: number; mastery_score: number | null; rag_status: PlannerTopic['ragStatus'] | null; assessment_percentage: number | null; last_revised_at: string | null; next_review_at: string | null; estimated_effort: number; importance: number; manual_priority: number | null }
+interface SessionRow { id: string; topic_id: string | null; subject_id: string; subject_name: string; topic_name: string | null; scheduled_at: string; planned_minutes: number; session_type: string; status: string; planner_reason: string | null; source: PlannedSession['source']; locked: number; review_items_json: string }
+
+function parseReviewItems(value: string): PlannedReviewItem[] {
+  try {
+    const items: unknown = JSON.parse(value)
+    if (!Array.isArray(items)) return []
+    return items.filter((item): item is PlannedReviewItem => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+      const value = item as Record<string, unknown>
+      return typeof value.topicId === 'string' && typeof value.subjectId === 'string' &&
+        typeof value.subjectName === 'string' && typeof value.topicName === 'string' &&
+        typeof value.plannedMinutes === 'number' && typeof value.reason === 'string'
+    })
+  } catch { return [] }
+}
 
 function dateOnly(value: string): string { return value.slice(0, 10) }
 function addDays(date: string, days: number): string {
@@ -65,7 +80,7 @@ export async function loadPlannerContext(user: SessionUser, env: Env, today = ne
     env.DB.prepare('SELECT subject_id, exam_datetime FROM exams WHERE exam_datetime >= ? ORDER BY exam_datetime').bind(`${today}T00:00:00.000Z`).all<ExamRow>(),
     env.DB.prepare(
       `SELECT t.id, t.subject_id, s.name AS subject_name, t.name, t.active, t.estimated_effort, t.importance,
-              tp.mastery_score, tp.rag_status, tp.last_revised_at, tp.manual_priority,
+              tp.mastery_score, tp.rag_status, tp.last_revised_at, tp.next_review_at, tp.manual_priority,
               (SELECT a.percentage FROM assessments a WHERE a.student_id = ? AND a.topic_id = t.id ORDER BY a.completed_at DESC LIMIT 1) AS assessment_percentage
        FROM topics t
        JOIN subjects s ON s.id = t.subject_id
@@ -78,7 +93,8 @@ export async function loadPlannerContext(user: SessionUser, env: Env, today = ne
     ).bind(profile.user_id, profile.user_id, profile.user_id).all<TopicRow>(),
     env.DB.prepare(
       `SELECT rs.id, rs.topic_id, rs.subject_id, s.name AS subject_name, t.name AS topic_name,
-              rs.scheduled_at, rs.planned_minutes, rs.session_type, rs.status, rs.planner_reason, rs.source, rs.locked
+              rs.scheduled_at, rs.planned_minutes, rs.session_type, rs.status, rs.planner_reason, rs.source, rs.locked,
+              rs.review_items_json
        FROM revision_sessions rs JOIN subjects s ON s.id = rs.subject_id LEFT JOIN topics t ON t.id = rs.topic_id
        WHERE rs.student_id = ? AND rs.scheduled_at >= ? AND rs.scheduled_at <= ? ORDER BY rs.scheduled_at`,
     ).bind(profile.user_id, `${today}T00:00:00.000Z`, end).all<SessionRow>(),
@@ -91,8 +107,8 @@ export async function loadPlannerContext(user: SessionUser, env: Env, today = ne
     exceptions: exceptions.results.map((row): PlannerException => ({ startDatetime: row.start_datetime, endDatetime: row.end_datetime, availableMinutes: row.available_minutes ?? 0, protectStreak: row.protect_streak === 1, reason: row.reason })),
     tutors: tutorOccurrences(tutors.results, today, 14),
     exams: exams.results.map((row): PlannerExam => ({ subjectId: row.subject_id, examDatetime: row.exam_datetime })),
-    topics: topics.results.map((row): PlannerTopic => ({ id: row.id, subjectId: row.subject_id, subjectName: row.subject_name, name: row.name, active: row.active === 1, masteryScore: row.mastery_score, ragStatus: row.rag_status ?? 'grey', latestAssessment: row.assessment_percentage, lastRevisedAt: row.last_revised_at, estimatedEffort: row.estimated_effort, importance: row.importance, manualPriority: row.manual_priority, requestedMore: false })),
-    existingSessions: sessions.results.map((row): PlannedSession => ({ id: row.id, topicId: row.topic_id, subjectId: row.subject_id, subjectName: row.subject_name, topicName: row.topic_name ?? row.subject_name, scheduledAt: row.scheduled_at, plannedMinutes: row.planned_minutes, sessionType: row.session_type, status: row.status, plannerReason: row.planner_reason ?? '', source: row.source, locked: row.locked === 1 })),
+    topics: topics.results.map((row): PlannerTopic => ({ id: row.id, subjectId: row.subject_id, subjectName: row.subject_name, name: row.name, active: row.active === 1, masteryScore: row.mastery_score, ragStatus: row.rag_status ?? 'grey', latestAssessment: row.assessment_percentage, lastRevisedAt: row.last_revised_at, nextReviewAt: row.next_review_at, estimatedEffort: row.estimated_effort, importance: row.importance, manualPriority: row.manual_priority, requestedMore: false })),
+    existingSessions: sessions.results.map((row): PlannedSession => ({ id: row.id, topicId: row.topic_id, subjectId: row.subject_id, subjectName: row.subject_name, topicName: row.topic_name ?? row.subject_name, scheduledAt: row.scheduled_at, plannedMinutes: row.planned_minutes, sessionType: row.session_type, status: row.status, plannerReason: row.planner_reason ?? '', source: row.source, locked: row.locked === 1, reviewItems: parseReviewItems(row.review_items_json) })),
   }
 }
 
@@ -108,9 +124,9 @@ export async function savePlan(user: SessionUser, sessions: PlannedSession[], en
   if (!planned.length) return
   await env.DB.batch(planned.map((session) => env.DB.prepare(
     `INSERT OR REPLACE INTO revision_sessions
-      (id, student_id, topic_id, subject_id, scheduled_at, planned_minutes, session_type, status, planner_reason, source, locked, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-  ).bind(session.id, profile.user_id, session.topicId, session.subjectId, session.scheduledAt, session.plannedMinutes, session.sessionType, session.status, session.plannerReason, session.source, session.locked ? 1 : 0)))
+      (id, student_id, topic_id, subject_id, scheduled_at, planned_minutes, session_type, status, planner_reason, source, locked, review_items_json, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+  ).bind(session.id, profile.user_id, session.topicId, session.subjectId, session.scheduledAt, session.plannedMinutes, session.sessionType, session.status, session.plannerReason, session.source, session.locked ? 1 : 0, JSON.stringify(session.reviewItems ?? []))))
 }
 
 export async function getSavedPlan(user: SessionUser, env: Env, today = new Date().toISOString().slice(0, 10)): Promise<PlannedSession[]> {
@@ -162,9 +178,9 @@ export async function updateSessionStatus(
   const profile = await profileFor(user, env)
   if (!profile) return false
   const session = await env.DB.prepare(
-    `SELECT topic_id, planned_minutes, xp_awarded FROM revision_sessions
+    `SELECT topic_id, planned_minutes, xp_awarded, review_items_json FROM revision_sessions
      WHERE id = ? AND student_id = ? AND status = 'planned'`,
-  ).bind(sessionId, profile.user_id).first<{ topic_id: string | null; planned_minutes: number; xp_awarded: number }>()
+  ).bind(sessionId, profile.user_id).first<{ topic_id: string | null; planned_minutes: number; xp_awarded: number; review_items_json: string }>()
   if (!session) return false
   const result = await env.DB.prepare(
     `UPDATE revision_sessions SET status = ?, actual_minutes = ?, updated_at = CURRENT_TIMESTAMP
@@ -190,6 +206,21 @@ export async function updateSessionStatus(
       await checkWeeklyGoal(profile.user_id, env)
     }
   }
+  if (status === 'completed' || status === 'partially_completed') {
+    for (const item of parseReviewItems(session.review_items_json)) {
+      await env.DB.prepare(
+        `INSERT INTO topic_progress
+          (student_id, topic_id, total_sessions, total_minutes, last_revised_at, rag_status, created_at, updated_at)
+         VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP, 'grey', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+         ON CONFLICT(student_id, topic_id) DO UPDATE SET
+           total_sessions = topic_progress.total_sessions + 1,
+           total_minutes = topic_progress.total_minutes + excluded.total_minutes,
+           last_revised_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP`,
+      ).bind(profile.user_id, item.topicId, item.plannedMinutes).run()
+      await recalculateTopicMastery(profile.user_id, item.topicId, 'Spaced retrieval completed', env)
+    }
+  }
   return true
 }
 
@@ -199,6 +230,7 @@ export interface SessionCompletion {
   confidenceAfter: 'unknown' | 'struggling' | 'ok' | 'confident'
   assessmentPercentage: number | null
   notes: string
+  reviewResults: Array<{ topicId: string; percentage: number | null }>
 }
 
 export async function scheduleRevisionNow(user: SessionUser, topicId: string, env: Env): Promise<boolean> {
@@ -224,9 +256,9 @@ export async function completeSession(user: SessionUser, input: SessionCompletio
   const profile = await profileFor(user, env)
   if (!profile) return false
   const session = await env.DB.prepare(
-    `SELECT topic_id, planned_minutes, xp_awarded FROM revision_sessions
+    `SELECT topic_id, planned_minutes, xp_awarded, review_items_json FROM revision_sessions
      WHERE id = ? AND student_id = ? AND status = 'planned' AND topic_id IS NOT NULL`,
-  ).bind(input.sessionId, profile.user_id).first<{ topic_id: string; planned_minutes: number; xp_awarded: number }>()
+  ).bind(input.sessionId, profile.user_id).first<{ topic_id: string; planned_minutes: number; xp_awarded: number; review_items_json: string }>()
   if (!session) return false
 
   const result = await env.DB.prepare(
@@ -258,6 +290,30 @@ export async function completeSession(user: SessionUser, input: SessionCompletio
     await awardQuizXp(profile.user_id, assessmentId, env)
   }
   await recalculateTopicMastery(profile.user_id, session.topic_id, 'Revision session completed', env)
+  const reviewItems = parseReviewItems(session.review_items_json)
+  for (const item of reviewItems) {
+    const submitted = input.reviewResults.find((result) => result.topicId === item.topicId)
+    await env.DB.prepare(
+      `INSERT INTO topic_progress
+        (student_id, topic_id, total_sessions, total_minutes, last_revised_at, rag_status, created_at, updated_at)
+       VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP, 'grey', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT(student_id, topic_id) DO UPDATE SET
+         total_sessions = topic_progress.total_sessions + 1,
+         total_minutes = topic_progress.total_minutes + excluded.total_minutes,
+         last_revised_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP`,
+    ).bind(profile.user_id, item.topicId, item.plannedMinutes).run()
+    if (submitted?.percentage !== null && submitted?.percentage !== undefined) {
+      const assessmentId = crypto.randomUUID()
+      await env.DB.prepare(
+        `INSERT INTO assessments
+          (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, completed_at, created_at)
+         VALUES (?, ?, ?, ?, 100, ?, 'Delayed retrieval check', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      ).bind(assessmentId, profile.user_id, item.topicId, submitted.percentage, submitted.percentage).run()
+      await awardQuizXp(profile.user_id, assessmentId, env)
+    }
+    await recalculateTopicMastery(profile.user_id, item.topicId, 'Spaced retrieval completed', env)
+  }
   if (session.xp_awarded === 0) await awardSessionXp(profile.user_id, input.sessionId, env)
   await checkWeeklyGoal(profile.user_id, env)
   return true

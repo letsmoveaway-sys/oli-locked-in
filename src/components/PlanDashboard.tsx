@@ -74,6 +74,7 @@ export function PlanDashboard({ sessions, availability, studentMode, onGenerate,
                       <p>{session.subjectName} · {session.sessionType}</p>
                       <h4>{session.topicName}</h4>
                       <span>{session.plannerReason}</span>
+                      {(session.reviewItems ?? []).map((item) => <span className="session-review" key={item.topicId}>↻ {item.plannedMinutes}m memory review: {item.topicName}</span>)}
                     </div>
                     <div className="session-duration">{session.plannedMinutes}m</div>
                     {studentMode && session.status === 'planned' ? (

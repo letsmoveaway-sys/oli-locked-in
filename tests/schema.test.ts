@@ -56,4 +56,10 @@ describe('initial migration', () => {
     expect(migration).toContain("'science-8464-b1h'")
     expect(migration).toContain("'english-lit-poem-kamikaze'")
   })
+
+  it('stores mixed-session spaced retrieval agendas', () => {
+    const migration = readFileSync('database/migrations/0013_spaced_review_sessions.sql', 'utf8')
+    expect(migration).toContain('review_items_json')
+    expect(migration).toContain('spaced_review_policy')
+  })
 })

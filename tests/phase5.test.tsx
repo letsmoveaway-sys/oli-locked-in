@@ -10,6 +10,7 @@ const session: PlanSession = {
   id: 'session-1', topicId: 'topic-1', subjectId: 'maths', subjectName: 'Mathematics', topicName: 'Algebra',
   scheduledAt: `${today}T17:00:00.000Z`, plannedMinutes: 35, sessionType: 'Focused revision', status: 'planned',
   plannerReason: 'Low mastery and an upcoming review.', source: 'generated', locked: false,
+  reviewItems: [{ topicId: 'topic-old', subjectId: 'science', subjectName: 'Science', topicName: 'Cell biology', plannedMinutes: 8, reason: 'Spaced retrieval from 4 days ago' }],
 }
 const topic: TopicProgress = {
   topicId: 'topic-1', topicName: 'Algebra', description: 'Algebra skills.', subjectId: 'maths', subjectName: 'Mathematics',
@@ -26,6 +27,8 @@ describe('Phase 5 student experience', () => {
     render(<TodayDashboard sessions={[session]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onViewTopic={vi.fn()} onOpenWeek={vi.fn()} />)
     expect(screen.getByText('Your revision for today')).toBeInTheDocument()
     expect(screen.getByText('Why this is here: Low mastery and an upcoming review.')).toBeInTheDocument()
+    expect(screen.getByText('Memory review from earlier learning')).toBeInTheDocument()
+    expect(screen.getByText('Cell biology')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Complete' }))
     expect(screen.getByText('Finish revision session')).toBeInTheDocument()
     expect(screen.getByLabelText('Actual time spent (minutes)')).toHaveValue(35)

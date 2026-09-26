@@ -337,11 +337,20 @@ async function handleSessionComplete(request: Request, env: Env): Promise<Respon
   const assessmentPercentage = body?.assessmentPercentage === null || body?.assessmentPercentage === undefined
     ? null : Number(body.assessmentPercentage)
   const notes = typeof body?.notes === 'string' ? body.notes.trim() : ''
+  const reviewResults = Array.isArray(body?.reviewResults) ? body.reviewResults.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+    const value = item as Record<string, unknown>
+    const percentage = value.percentage === null || value.percentage === undefined || value.percentage === ''
+      ? null : Number(value.percentage)
+    return typeof value.topicId === 'string' ? { topicId: value.topicId, percentage } : null
+  }) : []
   if (
     !sessionId || !Number.isInteger(actualMinutes) || actualMinutes < 1 || actualMinutes > 360 ||
     !confidenceValues.some((value) => value === confidenceAfter) ||
     (assessmentPercentage !== null && (!Number.isFinite(assessmentPercentage) || assessmentPercentage < 0 || assessmentPercentage > 100)) ||
-    notes.length > 1000
+    notes.length > 1000 || reviewResults.length > 3 || reviewResults.some((item) => !item ||
+      item.topicId.length > 100 || (item.percentage !== null &&
+        (!Number.isFinite(item.percentage) || item.percentage < 0 || item.percentage > 100)))
   ) return apiError('INVALID_REQUEST', 'Enter valid completion details.', 400)
 
   const saved = await completeSession(user, {
@@ -350,6 +359,7 @@ async function handleSessionComplete(request: Request, env: Env): Promise<Respon
     confidenceAfter: confidenceAfter as typeof confidenceValues[number],
     assessmentPercentage,
     notes,
+    reviewResults: reviewResults as Array<{ topicId: string; percentage: number | null }>,
   }, env)
   if (!saved) return apiError('NOT_FOUND', 'Planned revision session not found.', 404)
   const context = await loadPlannerContext(user, env)

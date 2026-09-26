@@ -13,7 +13,7 @@ function hashPassword(value: string): string {
 const [studentHash, parentHash] = await Promise.all([hashPassword(password), hashPassword(`${password}-parent`)])
 const escapedStudentHash = studentHash.replaceAll('$', '\\$')
 const escapedParentHash = parentHash.replaceAll('$', '\\$')
-writeFileSync(`${directory}/.dev.vars`, `STUDENT_PASSWORD_HASH="${escapedStudentHash}"\nPARENT_PASSWORD_HASH="${escapedParentHash}"\nSESSION_SECRET="${randomBytes(40).toString('hex')}"\n`)
+writeFileSync(`${directory}/.dev.vars`, `ENVIRONMENT="test"\nSTUDENT_PASSWORD_HASH="${escapedStudentHash}"\nPARENT_PASSWORD_HASH="${escapedParentHash}"\nSESSION_SECRET="${randomBytes(40).toString('hex')}"\n`)
 writeFileSync(`${directory}/auth.json`, JSON.stringify({ studentPassword: password }))
 
 const runner = process.platform === 'win32' ? 'npx.cmd' : 'npx'
