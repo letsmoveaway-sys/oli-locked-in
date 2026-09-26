@@ -29,6 +29,7 @@ import { getAnalytics } from '../services/analytics'
 import { updateWeeklyGoal } from '../services/gamification'
 import { getSubjectRevision, getTopicRevision } from '../services/revision'
 import { markWrittenAnswer } from '../services/marking'
+import { resetPocProgress } from '../services/reset'
 
 function sameOrigin(request: Request): boolean {
   const origin = request.headers.get('Origin')
@@ -219,6 +220,17 @@ async function handleWrittenMarking(request: Request, env: Env): Promise<Respons
     if (message === 'EMPTY_ANSWER') return apiError('INVALID_REQUEST', 'Add an answer before asking for feedback.', 400)
     return apiError('AI_MARKING_FAILED', 'The answer could not be marked just now. Your work has not been lost; please try again.', 502)
   }
+}
+
+async function handleProgressReset(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') return methodNotAllowed()
+  if (!sameOrigin(request)) return apiError('INVALID_ORIGIN', 'The request origin was rejected.', 403)
+  const user = await requireSession(request, env.SESSION_SECRET, 'parent')
+  if (!user) return apiError('FORBIDDEN', 'This operation requires a Parent account.', 403)
+  const body = await readJsonObject(request)
+  if (body?.confirmation !== 'RESET PROGRESS') return apiError('INVALID_REQUEST', 'Type RESET PROGRESS to confirm.', 400)
+  if (!(await resetPocProgress(user, env))) return apiError('NOT_FOUND', 'Student profile not found.', 404)
+  return json({ ok: true, message: 'POC revision activity was cleared and a fresh plan was generated.' })
 }
 
 async function handleConfidence(request: Request, env: Env): Promise<Response> {
@@ -436,6 +448,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
   if (path === '/api/revision/subject') return handleSubjectRevision(request, env)
   if (path === '/api/revision/topic') return handleTopicRevision(request, env)
   if (path === '/api/marking/written') return handleWrittenMarking(request, env)
+  if (path === '/api/parent/reset-progress') return handleProgressReset(request, env)
   if (path === '/api/progress/confidence') return handleConfidence(request, env)
   if (path === '/api/assessments') return handleAssessment(request, env)
   if (path === '/api/planner') return handlePlanner(request, env)

@@ -7,6 +7,7 @@ interface TodayDashboardProps {
   onComplete: (input: SessionCompletionInput) => Promise<void>
   onCannotDo: (sessionId: string) => Promise<void>
   onViewTopic: (topicId: string) => void
+  onReviewTopic: (topicId: string) => void
   onOpenWeek: () => void
   editable?: boolean
   analytics?: Analytics | null
@@ -24,7 +25,7 @@ function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
 }
 
-export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onViewTopic, onOpenWeek, editable = true, analytics }: TodayDashboardProps) {
+export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onViewTopic, onReviewTopic, onOpenWeek, editable = true, analytics }: TodayDashboardProps) {
   const today = new Date().toISOString().slice(0, 10)
   const todaySessions = sessions.filter((session) => sessionDate(session.scheduledAt) === today)
   const [activeSession, setActiveSession] = useState<PlanSession | null>(null)
@@ -114,10 +115,10 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onVie
                     <div className="today-session__actions">
                       <button onClick={() => setStartedSession(session.id)} type="button">Start</button>
                       <button onClick={() => openCompletion(session)} type="button">Complete</button>
-                      <button className="secondary" onClick={() => session.topicId && onViewTopic(session.topicId)} type="button">View topic</button>
+                      <button className="secondary" onClick={() => session.topicId && onViewTopic(session.topicId)} type="button">Open / resume</button>
                       <button className="text-button" onClick={() => void onCannotDo(session.id)} type="button">Cannot do</button>
                     </div>
-                  ) : <span className="session-status">{session.status}</span>}
+                  ) : <div className="today-session__actions"><span className="session-status">{session.status}</span>{session.topicId ? <button className="secondary" onClick={() => onReviewTopic(session.topicId!)} type="button">Review content</button> : null}</div>}
                 </article>
               )
             })}

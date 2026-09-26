@@ -134,6 +134,12 @@ export async function markWrittenResponse(input: {
   })).mark
 }
 
+export function resetPocProgress(confirmation: string): Promise<{ ok: true; message: string }> {
+  return request<{ ok: true; message: string }>('/api/parent/reset-progress', {
+    method: 'POST', body: JSON.stringify({ confirmation }),
+  })
+}
+
 export async function reviseNow(topicId: string): Promise<{ sessions: PlanSession[]; message: string }> {
   return request<{ sessions: PlanSession[]; message: string }>('/api/sessions/revise-now', {
     method: 'POST', body: JSON.stringify({ topicId }),

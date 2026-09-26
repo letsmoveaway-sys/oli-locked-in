@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   addAvailabilityException, completeSession, generatePlan, getAnalytics, getAvailability, getPlan, getProgress, getSubjectRevision, getSubjects, getTopicDetail, getTopicRevision,
-  recordAssessment, replan, reviseNow, saveAvailability as saveAvailabilityRequest, setSessionStatus, setWeeklyGoal, updateConfidence, updateCourse,
+  recordAssessment, replan, resetPocProgress, reviseNow, saveAvailability as saveAvailabilityRequest, setSessionStatus, setWeeklyGoal, updateConfidence, updateCourse,
 } from '../services/api'
 import type { Analytics, Confidence, CourseSubject, PlanSession, SessionCompletionInput, SessionUser, SubjectRevisionGuide, TopicDetail, TopicProgress, TopicRevision, WeeklyAvailability } from '../types'
 import { AnalyticsDashboard } from './AnalyticsDashboard'
@@ -32,6 +32,7 @@ export function Home({ user, onSignOut }: HomeProps) {
   const [selectedSubjectId, setSelectedSubjectId] = useState('subject-history')
   const [topicDetail, setTopicDetail] = useState<TopicDetail | null>(null)
   const [topicRevision, setTopicRevision] = useState<TopicRevision | null>(null)
+  const [lessonReadOnly, setLessonReadOnly] = useState(false)
   const [topicLoading, setTopicLoading] = useState(false)
   const [subjectGuide, setSubjectGuide] = useState<SubjectRevisionGuide | null>(null)
   const [guideLoading, setGuideLoading] = useState(false)
@@ -102,9 +103,9 @@ export function Home({ user, onSignOut }: HomeProps) {
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to replan.') }
   }
 
-  async function openTopic(topicId: string) {
+  async function openTopic(topicId: string, readOnly = false) {
     if (view !== 'lesson') setPreviousView(view)
-    setView('lesson'); setTopicLoading(true); setTopicDetail(null); setTopicRevision(null)
+    setLessonReadOnly(readOnly); setView('lesson'); setTopicLoading(true); setTopicDetail(null); setTopicRevision(null)
     try { const [detail, revision] = await Promise.all([getTopicDetail(topicId), getTopicRevision(topicId)]); setTopicDetail(detail); setTopicRevision(revision) }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load the topic.') }
     finally { setTopicLoading(false) }
@@ -132,6 +133,15 @@ export function Home({ user, onSignOut }: HomeProps) {
     const result = await setWeeklyGoal(minutes); setAnalytics(result.analytics); setMessage(result.message)
   }
 
+  async function resetTrialProgress(confirmation: string) {
+    setError(''); setMessage('')
+    try {
+      const result = await resetPocProgress(confirmation)
+      const [loadedProgress, loadedPlan, loadedAnalytics] = await Promise.all([getProgress(), getPlan(), getAnalytics()])
+      setProgress(loadedProgress); setPlan(loadedPlan); setAnalytics(loadedAnalytics); setMessage(result.message)
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to reset trial progress.'); throw caught }
+  }
+
   async function saveException(input: { startDatetime: string; endDatetime: string; reason: string; availableMinutes: number; protectStreak: boolean }) {
     try { const result = await addAvailabilityException(input); setPlan(result.sessions); setAnalytics(await getAnalytics()); setMessage(result.message) }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save the calendar exception.'); throw caught }
@@ -149,12 +159,12 @@ export function Home({ user, onSignOut }: HomeProps) {
       url.searchParams.delete('topic'); url.searchParams.delete('stage'); url.searchParams.delete('handoff')
       window.history.replaceState({}, '', url)
     }
-    setTopicDetail(null); setTopicRevision(null); setTopicLoading(false); setView(previousView === 'lesson' ? 'content' : previousView)
+    setTopicDetail(null); setTopicRevision(null); setTopicLoading(false); setLessonReadOnly(false); setView(previousView === 'lesson' ? 'content' : previousView)
   }
 
   if (view === 'lesson') return <main className="app-shell learning-shell" id="main-content">
     {topicLoading ? <div className="lesson-loading card"><p className="loading-inline">Preparing your revision session…</p></div> : null}
-    {!topicLoading && topicDetail && topicRevision ? <LearningSession onBack={closeLesson} onResult={assessFromTopic} onReviseNow={startRevisionNow} recordResults={user.role === 'student'} revision={topicRevision} topic={topicDetail} /> : null}
+    {!topicLoading && topicDetail && topicRevision ? <LearningSession onBack={closeLesson} onResult={assessFromTopic} onReviseNow={startRevisionNow} recordResults={user.role === 'student' && !lessonReadOnly} reviewMode={lessonReadOnly} revision={topicRevision} topic={topicDetail} /> : null}
     {!topicLoading && (!topicDetail || !topicRevision) ? <div className="card"><p className="error">The revision session could not be loaded.</p><button onClick={closeLesson} type="button">Back to the course</button></div> : null}
   </main>
 
@@ -175,11 +185,11 @@ export function Home({ user, onSignOut }: HomeProps) {
         <button aria-pressed={view === 'courses'} onClick={() => setView('courses')} type="button">Course setup</button>
       </nav>
       {message ? <p className="success" role="status">{message}</p> : null}{error ? <p className="error" role="alert">{error}</p> : null}{loading ? <p className="loading-inline">Loading course data…</p> : null}
-      {!loading && view === 'parent' && analytics ? <ParentDashboard analytics={analytics} onNavigate={(next) => setView(next)} /> : null}
-      {!loading && view === 'today' ? <>{analytics ? <GamificationCard data={analytics.gamification} editable={user.role === 'student'} onGoal={saveWeeklyGoal} /> : null}<TodayDashboard analytics={analytics} sessions={plan} topics={progress} editable={user.role === 'student'} onComplete={finishSession} onCannotDo={(id) => changeSessionStatus(id, 'rescheduled')} onViewTopic={(id) => void openTopic(id)} onOpenWeek={() => setView('week')} /></> : null}
-      {!loading && view === 'week' ? <WeeklyPlanner editable={user.role === 'student'} sessions={plan} topics={progress} onMove={(id) => changeSessionStatus(id, 'rescheduled')} onReplan={requestReplan} onViewTopic={(id) => void openTopic(id)} /> : null}
+      {!loading && view === 'parent' && analytics ? <ParentDashboard analytics={analytics} onNavigate={(next) => setView(next)} onResetProgress={resetTrialProgress} /> : null}
+      {!loading && view === 'today' ? <>{analytics ? <GamificationCard data={analytics.gamification} editable={user.role === 'student'} onGoal={saveWeeklyGoal} /> : null}<TodayDashboard analytics={analytics} sessions={plan} topics={progress} editable={user.role === 'student'} onComplete={finishSession} onCannotDo={(id) => changeSessionStatus(id, 'rescheduled')} onReviewTopic={(id) => void openTopic(id, true)} onViewTopic={(id) => void openTopic(id)} onOpenWeek={() => setView('week')} /></> : null}
+      {!loading && view === 'week' ? <WeeklyPlanner editable={user.role === 'student'} sessions={plan} topics={progress} onMove={(id) => changeSessionStatus(id, 'rescheduled')} onReplan={requestReplan} onReviewTopic={(id) => void openTopic(id, true)} onViewTopic={(id) => void openTopic(id)} /> : null}
       {!loading && view === 'subjects' ? <SubjectBrowser analytics={analytics} subjects={subjects} topics={progress} sessions={plan} onViewTopic={(id) => void openTopic(id)} /> : null}
-      {!loading && view === 'plan' ? <PlanDashboard availability={availability} onAvailability={saveWeeklyAvailability} onGenerate={buildPlan} onStatus={changeSessionStatus} sessions={plan} studentMode={user.role === 'student'} /> : null}
+      {!loading && view === 'plan' ? <PlanDashboard availability={availability} onAvailability={saveWeeklyAvailability} onGenerate={buildPlan} onReviewTopic={(id) => void openTopic(id, true)} onStatus={changeSessionStatus} onViewTopic={(id) => void openTopic(id)} sessions={plan} studentMode={user.role === 'student'} /> : null}
       {!loading && view === 'progress' ? <ProgressDashboard editable={user.role === 'student'} onAssessment={saveAssessment} onConfidence={saveConfidence} topics={progress} /> : null}
       {!loading && view === 'analytics' && analytics ? <AnalyticsDashboard analytics={analytics} /> : null}
       {!loading && view === 'calendar' && analytics ? <CalendarDashboard analytics={analytics} availability={availability} editable={user.role === 'parent'} onException={saveException} sessions={plan} /> : null}

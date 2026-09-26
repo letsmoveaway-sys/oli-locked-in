@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 
-const { studentPassword } = JSON.parse(readFileSync('.e2e/auth.json', 'utf8')) as { studentPassword: string }
+const { studentPassword, parentPassword } = JSON.parse(readFileSync('.e2e/auth.json', 'utf8')) as { studentPassword: string; parentPassword: string }
 
 test('student can learn a topic and check an answer', async ({ page }) => {
   await page.goto('/')
@@ -66,8 +66,25 @@ test('student signs in, completes revision and sees updated evidence', async ({ 
   await expect(page.getByRole('status')).toContainText('Session completed')
   await expect(page.getByText(/XP total/)).toBeVisible()
 
+  const completedSession = page.locator('.today-session').filter({ hasText: topicName }).filter({ has: page.getByRole('button', { name: 'Review content' }) }).first()
+  await completedSession.getByRole('button', { name: 'Review content' }).click()
+  await expect(page.getByRole('status')).toContainText('Nothing in this session will replace or change your saved test scores')
+  await page.getByRole('button', { name: /Back/ }).click()
+
   await page.getByRole('button', { name: 'Subjects' }).click()
   await history.locator('summary').click()
   await history.getByRole('button', { name: new RegExp(topicName) }).click()
   await expect(page.locator('.saved-notes')).toHaveText('E2E completion evidence')
+})
+
+test('parent can reset POC activity without deleting configuration', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Username or email').fill('parent')
+  await page.getByLabel('Password').fill(parentPassword)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByRole('button', { name: 'Reset POC revision progress' }).click()
+  await page.getByLabel(/Type RESET PROGRESS/).fill('RESET PROGRESS')
+  await page.getByRole('button', { name: 'Clear trial activity' }).click()
+  await expect(page.getByRole('status')).toContainText('POC revision activity was cleared')
+  await expect(page.getByRole('button', { name: 'Course configuration' })).toBeVisible()
 })

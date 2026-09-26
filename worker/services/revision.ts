@@ -133,8 +133,90 @@ async function resourcesFor(subjectId: string, topicId: string | null, env: Env)
   return rows.results.map(mapResource)
 }
 
+const bitesizeLessons: Record<string, string> = {
+  'english-language-p2-language': 'https://www.bbc.co.uk/bitesize/articles/z4d4xyc',
+  'english-lit-carol-characters': 'https://www.bbc.co.uk/bitesize/articles/zx6bdnb',
+  'english-lit-carol-methods': 'https://www.bbc.co.uk/bitesize/articles/zvs9239',
+  'english-lit-carol-plot': 'https://www.bbc.co.uk/bitesize/articles/zxtrjfr',
+  'english-lit-carol-themes': 'https://www.bbc.co.uk/bitesize/articles/zkk6vj6',
+  'english-lit-inspector-characters': 'https://www.bbc.co.uk/bitesize/articles/zkn9239',
+  'english-lit-inspector-plot': 'https://www.bbc.co.uk/bitesize/articles/zkskmbk',
+  'english-lit-inspector-themes': 'https://www.bbc.co.uk/bitesize/articles/zqf8xg8',
+  'english-lit-macbeth-characters': 'https://www.bbc.co.uk/bitesize/articles/zs87fdm',
+  'english-lit-macbeth-methods': 'https://www.bbc.co.uk/bitesize/articles/zgmpcxs',
+  'english-lit-macbeth-plot': 'https://www.bbc.co.uk/bitesize/articles/zvd2ywx',
+  'english-lit-macbeth-themes': 'https://www.bbc.co.uk/bitesize/articles/zvwmvj6',
+  'english-lit-poem-bayonet': 'https://www.bbc.co.uk/bitesize/articles/zvbkvj6',
+  'english-lit-poem-charge': 'https://www.bbc.co.uk/bitesize/articles/zkpb8p3',
+  'english-lit-poem-prelude': 'https://www.bbc.co.uk/bitesize/articles/zmy4qyc',
+  'history-edexcel-elizabeth-challenges': 'https://www.bbc.co.uk/bitesize/articles/zndpg2p',
+  'history-edexcel-elizabeth-society': 'https://www.bbc.co.uk/bitesize/articles/znjscxs',
+  'history-edexcel-germany-control': 'https://www.bbc.co.uk/bitesize/guides/zsvhk7h/revision/1',
+  'history-edexcel-germany-life': 'https://www.bbc.co.uk/bitesize/guides/zqrfj6f/revision/1',
+  'history-edexcel-germany-rise': 'https://www.bbc.co.uk/bitesize/guides/z3bp82p/revision/1',
+  'history-edexcel-germany-weimar': 'https://www.bbc.co.uk/bitesize/guides/z9y64j6/revision/1',
+  'history-edexcel-industrial': 'https://www.bbc.co.uk/bitesize/guides/zxbqjsg/revision/1',
+  'history-edexcel-medieval': 'https://www.bbc.co.uk/bitesize/guides/zfkt6g8/revision/1',
+  'history-edexcel-modern-medicine': 'https://www.bbc.co.uk/bitesize/guides/z3qfsk7/revision/1',
+  'history-edexcel-renaissance': 'https://www.bbc.co.uk/bitesize/guides/zktrg7h/revision/1',
+  'history-edexcel-western-front': 'https://www.bbc.co.uk/bitesize/guides/z8p4cmn/revision/1',
+  'maths-algebra-functions': 'https://www.bbc.co.uk/bitesize/articles/zftbh4j',
+  'maths-algebra-graphs': 'https://www.bbc.co.uk/bitesize/articles/z6jtb7h',
+  'maths-algebra-manipulation': 'https://www.bbc.co.uk/bitesize/topics/z3shw6f/watch/z9cpyrd',
+  'maths-algebra-simultaneous': 'https://www.bbc.co.uk/bitesize/topics/zrqpr82/watch/zg22fg8',
+  'maths-geometry-angles': 'https://www.bbc.co.uk/bitesize/articles/zjf7s82',
+  'maths-geometry-circles': 'https://www.bbc.co.uk/bitesize/articles/zmv8ywx',
+  'maths-geometry-measures': 'https://www.bbc.co.uk/bitesize/articles/zp6rqyc',
+  'maths-geometry-similarity': 'https://www.bbc.co.uk/bitesize/articles/zvpxkhv',
+  'maths-geometry-transformations': 'https://www.bbc.co.uk/bitesize/articles/zcfwg2p',
+  'maths-geometry-trig': 'https://www.bbc.co.uk/bitesize/topics/z93rkqt',
+  'maths-number-accuracy': 'https://www.bbc.co.uk/bitesize/topics/zjh6wnb',
+  'maths-number-fdp': 'https://www.bbc.co.uk/bitesize/articles/zhy2nk7',
+  'maths-number-powers': 'https://www.bbc.co.uk/bitesize/topics/ztqmhyc',
+  'maths-number-standard-surds': 'https://www.bbc.co.uk/bitesize/topics/zr269ty/watch/zmqbxg8',
+  'maths-number-structure': 'https://www.bbc.co.uk/bitesize/articles/zcryvwx',
+  'maths-probability-combined': 'https://www.bbc.co.uk/bitesize/articles/zsmmp9q',
+  'maths-ratio-direct-inverse': 'https://www.bbc.co.uk/bitesize/topics/zsgxwsg/watch/zjvwcxs',
+  'maths-ratio-rates': 'https://www.bbc.co.uk/bitesize/articles/zccmfdm',
+  'maths-statistics-represent': 'https://www.bbc.co.uk/bitesize/articles/z7cx7yc',
+  'maths-statistics-sampling': 'https://www.bbc.co.uk/bitesize/guides/zhksjhv/revision/1',
+  'science-b-homeostasis': 'https://www.bbc.co.uk/bitesize/guides/zq73tv4/revision/1',
+  'science-b-infection': 'https://www.bbc.co.uk/bitesize/articles/ztqmnk7',
+  'science-b-inheritance': 'https://www.bbc.co.uk/bitesize/articles/z4kbkhv',
+  'science-c-atmosphere': 'https://www.bbc.co.uk/bitesize/guides/zcqbpbk/revision/1',
+  'science-c-atomic': 'https://www.bbc.co.uk/bitesize/articles/znfkxg8',
+  'science-c-bonding': 'https://www.bbc.co.uk/bitesize/topics/z33rrwx',
+  'science-c-changes': 'https://www.bbc.co.uk/bitesize/articles/zhs86rd',
+  'science-c-organic': 'https://www.bbc.co.uk/bitesize/articles/zcpdxg8',
+  'science-c-quantitative': 'https://www.bbc.co.uk/bitesize/guides/zs24h39/revision/1',
+  'science-c-rates': 'https://www.bbc.co.uk/bitesize/guides/zgpxdxs/revision/1',
+  'science-p-particles': 'https://www.bbc.co.uk/bitesize/guides/zyjvtv4/revision/1',
+}
+
+export function bitesizeResourceFor(topic: { id: string; name: string }): RevisionResource | null {
+  const url = bitesizeLessons[topic.id]
+  if (!url) return null
+  const isAnglesAndPolygons = topic.id === 'maths-geometry-angles'
+  return {
+    id: `bitesize-${topic.id}`,
+    title: isAnglesAndPolygons ? 'Angles in polygons: explanations, examples and self-test' : `${topic.name} on BBC Bitesize`,
+    provider: 'BBC Bitesize',
+    resourceType: 'topic_revision',
+    description: isAnglesAndPolygons
+      ? 'Covers polygon angle sums, regular polygons and missing-angle calculations with diagrams and worked examples.'
+      : `Free BBC revision material selected specifically for this ${topic.name} lesson.`,
+    url,
+    freeAccess: true,
+  }
+}
+
 export function createAutoTest(topicId: string): AutoMarkQuestion[] {
   const tests: Record<string, AutoMarkQuestion[]> = {
+    'maths-geometry-angles': [
+      { id: 'angles-1', question: 'Two parallel lines are crossed by a transversal. One angle is 68°. What is the alternate angle?', options: ['22°', '68°', '112°', '292°'], correctOption: 1, explanation: 'Alternate angles between parallel lines are equal, so the angle is 68°.', marks: 1 },
+      { id: 'angles-2', question: 'What is the sum of the interior angles of a hexagon?', options: ['360°', '540°', '720°', '900°'], correctOption: 2, explanation: 'A hexagon can be split into 6 − 2 = 4 triangles, so its interior angles total 4 × 180° = 720°.', marks: 2 },
+      { id: 'angles-3', question: 'Each exterior angle of a regular polygon is 30°. How many sides does it have?', options: ['10', '12', '15', '30'], correctOption: 1, explanation: 'Exterior angles make one full turn, so the number of sides is 360 ÷ 30 = 12.', marks: 2 },
+    ],
     'maths-algebra-equations': [
       { id: 'eq-1', question: 'Solve 7x + 4 = 39.', options: ['x = 5', 'x = 6', 'x = 35', 'x = 43'], correctOption: 0, explanation: 'Subtract 4 to get 7x = 35, then divide by 7, so x = 5.', marks: 2 },
       { id: 'eq-2', question: 'Solve 6x - 5 = 2x + 19.', options: ['x = 3', 'x = 4', 'x = 6', 'x = 12'], correctOption: 2, explanation: 'Subtract 2x, then add 5: 4x = 24, so x = 6.', marks: 3 },
@@ -174,7 +256,12 @@ export function createAutoTest(topicId: string): AutoMarkQuestion[] {
   return tests[topicId] ?? []
 }
 
-function expectedLength(marks: number): string {
+function expectedLength(marks: number, subjectId: string): string {
+  if (subjectId === 'subject-mathematics') {
+    if (marks <= 1) return 'A final answer'
+    if (marks <= 3) return 'A short calculation with working'
+    return 'A complete solution with each key step shown'
+  }
   if (marks <= 2) return 'One or two precise sentences'
   if (marks <= 4) return 'One developed paragraph'
   if (marks <= 8) return 'Two or three developed paragraphs'
@@ -215,13 +302,60 @@ function writtenQuestionsFor(topic: TopicRow, practiceQuestions: PracticeQuestio
     question: practice.question,
     marks: practice.marks,
     suggestedMinutes: Math.max(3, Math.ceil(practice.marks * 1.5)),
-    expectedLength: expectedLength(practice.marks),
+    expectedLength: expectedLength(practice.marks, topic.subject_id),
     hint: practice.hint,
     markingPoints: markingPointsFor(topic.subject_id),
     exemplar: practice.answer,
     exemplarAnnotations: exemplarAnnotationsFor(topic.subject_id),
     canUpdateMastery,
   }))
+}
+
+function curatedMathsLesson(topic: TopicRow): Omit<TopicRevision, 'resources'> | null {
+  if (topic.id !== 'maths-geometry-angles') return null
+
+  return completeRevision(topic, {
+    topicId: topic.id,
+    summary: 'Angles are found by combining a small set of facts: angles on a line and around a point, vertically opposite angles, angle sums in triangles and polygons, and the corresponding, alternate and co-interior rules for parallel lines. The important skill is to identify the fact that applies, calculate carefully, and state the reason for each step.',
+    learningObjectives: [
+      'Use angle facts at a point, on a straight line and in triangles and quadrilaterals',
+      'Recognise corresponding, alternate and co-interior angles when lines are parallel',
+      'Calculate interior and exterior angles of regular and irregular polygons',
+      'Build a geometrical argument in which every conclusion has a valid reason',
+    ],
+    keyPoints: [
+      'Angles on a straight line total 180°; angles around a point total 360°; vertically opposite angles are equal.',
+      'Angles in a triangle total 180° and angles in a quadrilateral total 360°. An isosceles triangle has two equal base angles.',
+      'When parallel lines are crossed by a transversal: corresponding angles are equal, alternate angles are equal, and co-interior angles total 180°.',
+      'The interior-angle sum of an n-sided polygon is (n − 2) × 180° because it can be divided into n − 2 triangles.',
+      'The exterior angles of any polygon make one full turn and therefore total 360°.',
+      'For a regular polygon, each exterior angle is 360° ÷ n and each interior angle is 180° minus the exterior angle.',
+      'Diagrams are not necessarily drawn to scale. Mark equal angles and parallel lines, then write the angle fact beside each calculation.',
+    ],
+    examTips: [
+      'If the question says “give a reason”, name the exact fact, such as “alternate angles are equal—not just “angles on parallel lines”.',
+      'For an algebraic angle question, form an equation from the angle fact first, solve it, then substitute back to find the requested angle.',
+      'Check that the answer is sensible: an acute angle is below 90°, an obtuse angle is between 90° and 180°, and a reflex angle is above 180°.',
+    ],
+    workedExample: {
+      title: 'Combine parallel-line and triangle facts',
+      prompt: 'Two parallel lines are crossed by a transversal. An alternate angle inside a triangle is 64°. A second angle in the triangle is 47°. Find the third angle.',
+      steps: [
+        'The angle inside the triangle is 64° because alternate angles between parallel lines are equal.',
+        'Angles in a triangle total 180°, so write 64 + 47 + x = 180.',
+        '64 + 47 = 111, so x = 180 − 111.',
+        'State the result and reason: x = 69° because angles in a triangle total 180°.',
+      ],
+      answer: '69°',
+    },
+    practiceQuestions: [
+      { question: 'Angles (3x + 8)° and (5x − 20)° are alternate angles between parallel lines. Find x and the size of the angles.', hint: 'Alternate angles are equal, so set the two expressions equal.', answer: '3x + 8 = 5x − 20, so 28 = 2x and x = 14. Substitution gives 3(14) + 8 = 50°; both angles are 50°.', marks: 3 },
+      { question: 'Find the sum of the interior angles of a decagon, then find each interior angle if the decagon is regular.', hint: 'Use (n − 2) × 180°, then divide by n for a regular polygon.', answer: 'The sum is (10 − 2) × 180° = 1440°. Each interior angle is 1440° ÷ 10 = 144°.', marks: 3 },
+      { question: 'The exterior angle of a regular polygon is 24°. Find the number of sides and each interior angle. Show the angle facts you use.', hint: 'Exterior angles total 360°. An interior angle and its exterior angle lie on a straight line.', answer: 'Number of sides = 360 ÷ 24 = 15. Each interior angle is 180° − 24° = 156°.', marks: 3 },
+    ],
+    testQuestions: createAutoTest(topic.id),
+    bespoke: true,
+  }, true)
 }
 
 function completeRevision(topic: TopicRow, lesson: Omit<TopicRevision, 'resources' | 'writtenQuestions' | 'assessmentAvailable'>, canUpdateWrittenMastery: boolean): Omit<TopicRevision, 'resources'> {
@@ -316,6 +450,8 @@ export async function getSubjectRevision(user: SessionUser, subjectId: string, e
 }
 
 export function createFallbackLesson(topic: TopicRow): Omit<TopicRevision, 'resources'> {
+  const curatedMaths = curatedMathsLesson(topic)
+  if (curatedMaths) return curatedMaths
   const reviewedPractice = topic.subject_id === 'subject-english-literature'
     ? englishLiteraturePractice(topic)
     : reviewedPracticeFor(topic.id)
@@ -385,5 +521,7 @@ export async function getTopicRevision(user: SessionUser, topicId: string, env: 
   }, true) : createFallbackLesson(topic)
   const resources = await resourcesFor(topic.subject_id, topicId, env)
   if (topic.source_reference && !resources.some((resource) => resource.url === topic.source_reference)) resources.push({ id: `official-${topic.id}`, title: `${topic.name}: official specification content`, provider: topic.exam_board ?? 'Exam board', resourceType: 'specification', description: 'The official course specification for this topic.', url: topic.source_reference, freeAccess: true })
+  const bitesize = bitesizeResourceFor(topic)
+  if (bitesize) resources.push(bitesize)
   return { ...content, automaticMarkingAvailable: Boolean(env.GEMINI_API_KEY), resources }
 }

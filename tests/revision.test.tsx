@@ -4,7 +4,7 @@ import { LearningSession } from '../src/components/LearningSession'
 import { RevisionSubjectGuide } from '../src/components/RevisionSubjectGuide'
 import { TopicLearning } from '../src/components/TopicLearning'
 import { buildPhoneHandoffUrl } from '../src/components/PhoneHandoff'
-import { createFallbackLesson } from '../worker/services/revision'
+import { bitesizeResourceFor, createFallbackLesson } from '../worker/services/revision'
 import type { SubjectRevisionGuide, TopicRevision } from '../src/types'
 
 const guide: SubjectRevisionGuide = {
@@ -23,6 +23,17 @@ const revision: TopicRevision = {
 }
 
 describe('revision learning content', () => {
+  it('adds only a verified, lesson-specific BBC Bitesize page', () => {
+    const resource = bitesizeResourceFor({ id: 'history-edexcel-germany-rise', name: 'Hitler’s rise to power, 1919–33' })
+    expect(resource?.provider).toBe('BBC Bitesize')
+    expect(resource?.resourceType).toBe('topic_revision')
+    expect(resource?.url).toBe('https://www.bbc.co.uk/bitesize/guides/z3bp82p/revision/1')
+    expect(bitesizeResourceFor({ id: 'lesson-without-a-verified-match', name: 'Unmatched lesson' })).toBeNull()
+    const angles = bitesizeResourceFor({ id: 'maths-geometry-angles', name: 'Angles and polygons' })
+    expect(angles?.title).toMatch(/Angles in polygons/)
+    expect(angles?.description).toMatch(/polygon angle sums/)
+  })
+
   it('builds a phone link for only the selected topic without carrying secrets', () => {
     const link = new URL(buildPhoneHandoffUrl('maths-algebra-equations', 'https://revision.example/?token=secret#private'))
     expect(link.searchParams.get('topic')).toBe('maths-algebra-equations')
@@ -60,6 +71,17 @@ describe('revision learning content', () => {
     expect(fallback.assessmentAvailable).toBe(false)
   })
 
+  it('teaches angles and polygons with varied maths practice', () => {
+    const lesson = createFallbackLesson({ id: 'maths-geometry-angles', name: 'Angles and polygons', description: 'Angle facts.', component: 'All papers', subject_id: 'subject-mathematics', subject_name: 'Mathematics' })
+    expect(lesson.bespoke).toBe(true)
+    expect(lesson.keyPoints).toHaveLength(7)
+    expect(lesson.keyPoints.join(' ')).toMatch(/alternate angles/i)
+    expect(lesson.keyPoints.join(' ')).toMatch(/\(n − 2\)/)
+    expect(lesson.practiceQuestions).toHaveLength(3)
+    expect(lesson.testQuestions).toHaveLength(3)
+    expect(lesson.writtenQuestions[0]?.expectedLength).toMatch(/calculation/i)
+  })
+
   it('auto-marks a full-page test and records its weighted score', async () => {
     const onResult = vi.fn().mockResolvedValue(undefined)
     render(<LearningSession onBack={() => undefined} onResult={onResult} onReviseNow={vi.fn().mockResolvedValue(undefined)} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
@@ -84,5 +106,16 @@ describe('revision learning content', () => {
     expect(screen.queryByRole('button', { name: 'Continue on phone' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '3. Test yourself' }))
     expect(screen.getByRole('button', { name: 'Continue on phone' })).toBeInTheDocument()
+  })
+
+  it('allows session review without recording another test score', async () => {
+    const onResult = vi.fn().mockResolvedValue(undefined)
+    render(<LearningSession onBack={() => undefined} onResult={onResult} onReviseNow={vi.fn().mockResolvedValue(undefined)} recordResults={false} reviewMode revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: 80, confidence: 'confident', ragStatus: 'green', lastRevisedAt: null, totalSessions: 1, totalMinutes: 20, nextReviewAt: null, latestAssessment: 80, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Nothing in this session will replace or change your saved test scores')
+    fireEvent.click(screen.getByRole('button', { name: '3. Test yourself' }))
+    fireEvent.click(screen.getByLabelText('4'))
+    fireEvent.click(screen.getByRole('button', { name: 'Finish and mark check' }))
+    expect(await screen.findByText('2/2')).toBeInTheDocument()
+    expect(onResult).not.toHaveBeenCalled()
   })
 })

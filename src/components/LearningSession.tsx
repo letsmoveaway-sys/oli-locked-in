@@ -13,6 +13,7 @@ interface LearningSessionProps {
   onResult: (topicId: string, score: number, maximumScore: number, evidence?: { assessmentType: string; markingSource: 'auto_marked' | 'ai_estimated'; markingConfidence?: 'low' | 'medium' | 'high'; feedback?: { summary?: string; nextStep?: string } }) => Promise<void>
   onReviseNow: (topicId: string) => Promise<void>
   recordResults: boolean
+  reviewMode?: boolean
 }
 
 const stages: Array<{ id: Stage; label: string }> = [
@@ -20,7 +21,7 @@ const stages: Array<{ id: Stage; label: string }> = [
   { id: 'test', label: '3. Test yourself' }, { id: 'results', label: '4. Results' },
 ]
 
-export function LearningSession({ topic, revision, onBack, onResult, onReviseNow, recordResults }: LearningSessionProps) {
+export function LearningSession({ topic, revision, onBack, onResult, onReviseNow, recordResults, reviewMode = false }: LearningSessionProps) {
   const [stage, setStage] = useState<Stage>(() => new URLSearchParams(window.location.search).get('stage') === 'test' ? 'test' : 'overview')
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [result, setResult] = useState<{ score: number; maximum: number } | null>(null)
@@ -39,7 +40,9 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
   const [shareStatus, setShareStatus] = useState('')
   const [markingRoute, setMarkingRoute] = useState<'automatic' | 'external'>('automatic')
   const maximum = useMemo(() => revision.testQuestions.reduce((sum, question) => sum + question.marks, 0), [revision.testQuestions])
-  const writtenQuestion = revision.writtenQuestions[0]
+  const isMaths = topic.subjectId === 'subject-mathematics'
+  const writtenQuestion = revision.writtenQuestions.at(-1)
+  const exampleQuestions = revision.writtenQuestions.length > 1 ? revision.writtenQuestions.slice(0, -1) : revision.writtenQuestions
   const externalPrompt = useMemo(() => writtenQuestion ? buildExternalMarkingPrompt(writtenQuestion, writtenAnswer) : '', [writtenQuestion, writtenAnswer])
 
   async function finishTest() {
@@ -126,6 +129,7 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
       <div><p className="eyebrow">{topic.subjectName} · Full revision session</p><h1 id="learning-session-heading">{topic.topicName}</h1></div>
       <div className="lesson-header-actions"><span className={`rag-label rag--${topic.ragStatus}`}>{topic.masteryScore === null ? 'Not assessed' : `${Math.round(topic.masteryScore)}% mastery`}</span>{recordResults ? <button onClick={() => void onReviseNow(topic.topicId)} type="button">Revise now</button> : null}</div>
     </header>
+    {reviewMode ? <p className="review-mode-notice" role="status"><strong>Review mode:</strong> revisit any content and practise freely. Nothing in this session will replace or change your saved test scores, mastery or completed-session record.</p> : null}
     <nav className="lesson-steps" aria-label="Revision session stages">{stages.map((item) => <button aria-current={stage === item.id ? 'step' : undefined} disabled={item.id === 'results' && !result} key={item.id} onClick={() => setStage(item.id)} type="button">{item.label}</button>)}</nav>
 
     {stage === 'overview' ? <div className="lesson-page card">
@@ -133,6 +137,7 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
       {!revision.bespoke ? <p className="fallback-notice">{revision.assessmentAvailable ? <><strong>Reviewed exam practice available.</strong> The overview is concise, but the question below is topic-specific, includes a worked answer and can contribute to mastery.</> : <><strong>Starter guidance only.</strong> Detailed, reviewed assessment content is still being added for this topic. You can practise and request feedback, but this activity will not change mastery. Use the official topic resource below for authoritative coverage.</>}</p> : null}
       <div className="revision-columns"><section><h3>What you need to be able to do</h3><ul>{revision.learningObjectives.map((item) => <li key={item}>{item}</li>)}</ul></section><section><h3>Key knowledge</h3><ul>{revision.keyPoints.map((item) => <li key={item}>{item}</li>)}</ul></section></div>
       <section className="exam-tip-panel"><h3>Exam technique</h3><ul>{revision.examTips.map((item) => <li key={item}>{item}</li>)}</ul></section>
+      {revision.resources.some((resource) => resource.provider === 'BBC Bitesize') ? <section><h3>Learn it another way</h3><div className="resource-grid">{revision.resources.filter((resource) => resource.provider === 'BBC Bitesize').map((resource) => <a className="resource-card" href={resource.url} key={resource.id} rel="noreferrer" target="_blank"><span>BBC Bitesize · lesson and examples</span><strong>{resource.title}</strong><small>{resource.description}</small></a>)}</div></section> : null}
       {topic.notes || topic.assessments.length || topic.sessions.length ? <section className="previous-evidence"><h3>Your previous work</h3>{topic.notes ? <p className="saved-notes">{topic.notes}</p> : null}<p>{topic.totalSessions} completed session{topic.totalSessions === 1 ? '' : 's'} · {topic.totalMinutes} minutes revised{topic.latestAssessment === null ? '' : ` · latest assessment ${Math.round(topic.latestAssessment)}%`}</p>{topic.assessments.length ? <div className="evidence-summary">{topic.assessments.slice(0, 3).map((assessment, index) => <article key={`${assessment.completedAt}-${index}`}><strong>{assessment.assessmentType}: {Math.round(assessment.percentage)}%</strong><span>{assessment.markingSource === 'ai_estimated' ? `AI-estimated${assessment.markingConfidence ? ` · ${assessment.markingConfidence} confidence` : ''}` : assessment.markingSource.replace('_', ' ')}</span>{assessment.feedback?.nextStep ? <small>Next step: {assessment.feedback.nextStep}</small> : null}</article>)}</div> : null}</section> : null}
       <div className="lesson-next"><button onClick={() => setStage('examples')} type="button">Continue to worked examples →</button></div>
     </div> : null}
@@ -140,17 +145,17 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
     {stage === 'examples' ? <div className="lesson-page card">
       <p className="eyebrow">Guided practice</p><h2>See how to work it through</h2>
       <article className="worked-example worked-example--large"><h3>{revision.workedExample.title}</h3><p className="question-prompt">{revision.workedExample.prompt}</p><ol>{revision.workedExample.steps.map((step) => <li key={step}>{step}</li>)}</ol><p className="answer-box"><strong>Final answer:</strong> {revision.workedExample.answer}</p></article>
-      <h2>Sample questions with answers</h2><div className="sample-question-list">{revision.writtenQuestions.map((question, index) => <article key={question.id}><div className="question-heading"><strong>Example {index + 1}</strong><span>{question.marks} marks</span></div><p>{question.question}</p><p className="answer-guidance">Aim for {question.expectedLength.toLowerCase()} · about {question.suggestedMinutes} minutes</p><p className="hint-box"><strong>How to start:</strong> {question.hint}</p><button className="secondary" onClick={() => setShownExemplars((state) => ({ ...state, [question.id]: !state[question.id] }))} type="button">{shownExemplars[question.id] ? `Hide ${question.canUpdateMastery ? 'exemplar' : 'marking guide'}` : `Show ${question.canUpdateMastery ? 'high-level exemplar' : 'marking guide'}`}</button>{shownExemplars[question.id] ? <div className="exemplar-panel"><p className="answer-box"><strong>{question.canUpdateMastery ? 'Exemplar answer:' : 'Marking guide:'}</strong> {question.exemplar}</p><h3>{question.canUpdateMastery ? 'Why this is effective' : 'What a strong response must demonstrate'}</h3><ul>{question.exemplarAnnotations.map((annotation) => <li key={annotation.label}><strong>{annotation.label}:</strong> {annotation.explanation}</li>)}</ul></div> : null}</article>)}</div>
+      <h2>{isMaths ? 'Worked practice questions' : 'Sample questions with answers'}</h2><div className="sample-question-list">{exampleQuestions.map((question, index) => <article key={question.id}><div className="question-heading"><strong>Example {index + 1}</strong><span>{question.marks} marks</span></div><p>{question.question}</p><p className="answer-guidance">Aim for {question.expectedLength.toLowerCase()} · about {question.suggestedMinutes} minutes</p><p className="hint-box"><strong>How to start:</strong> {question.hint}</p><button className="secondary" onClick={() => setShownExemplars((state) => ({ ...state, [question.id]: !state[question.id] }))} type="button">{shownExemplars[question.id] ? `Hide ${isMaths ? 'worked solution' : question.canUpdateMastery ? 'exemplar' : 'marking guide'}` : `Show ${isMaths ? 'worked solution' : question.canUpdateMastery ? 'high-level exemplar' : 'marking guide'}`}</button>{shownExemplars[question.id] ? <div className="exemplar-panel"><p className="answer-box"><strong>{isMaths ? 'Worked solution:' : question.canUpdateMastery ? 'Exemplar answer:' : 'Marking guide:'}</strong> {question.exemplar}</p><h3>{isMaths ? 'What earns the marks' : question.canUpdateMastery ? 'Why this is effective' : 'What a strong response must demonstrate'}</h3><ul>{question.exemplarAnnotations.map((annotation) => <li key={annotation.label}><strong>{annotation.label}:</strong> {annotation.explanation}</li>)}</ul></div> : null}</article>)}</div>
       {revision.resources.length ? <><h2>Extra help for this exact topic</h2><div className="resource-grid">{revision.resources.map((resource) => <a className="resource-card" href={resource.url} key={resource.id} rel="noreferrer" target="_blank"><span>{resource.provider} · {resource.resourceType.replace('_', ' ')}</span><strong>{resource.title}</strong><small>{resource.description}</small></a>)}</div></> : null}
       <div className="lesson-next"><button onClick={() => setStage('test')} type="button">I’m ready to test myself →</button></div>
     </div> : null}
 
     {stage === 'test' ? <div className="lesson-page card">
       <p className="eyebrow">Independent check</p><h2>Answer in the way that suits you</h2>
-      {writtenQuestion ? <section className="written-practice" aria-labelledby="written-practice-heading"><div className="question-heading"><strong id="written-practice-heading">Written exam practice</strong><span>{writtenQuestion.marks} marks</span></div><p className="question-prompt">{writtenQuestion.question}</p><p className="answer-guidance">Aim for {writtenQuestion.expectedLength.toLowerCase()} · about {writtenQuestion.suggestedMinutes} minutes</p>
+      {writtenQuestion ? <section className="written-practice" aria-labelledby="written-practice-heading"><div className="question-heading"><strong id="written-practice-heading">{isMaths ? 'Calculation practice' : 'Written exam practice'}</strong><span>{writtenQuestion.marks} marks</span></div><p className="question-prompt">{writtenQuestion.question}</p><p className="answer-guidance">Aim for {writtenQuestion.expectedLength.toLowerCase()} · about {writtenQuestion.suggestedMinutes} minutes</p>
         {!writtenQuestion.canUpdateMastery ? <p className="fallback-notice">This is unscored starter practice. Feedback is for improvement and will not change mastery.</p> : null}
-        <p className="assessment-hint">Choose how to answer: type below, or use handwritten work on your phone.</p>
-        <label className="written-answer-label">Type your answer in the app<textarea onChange={(event) => { setWrittenAnswer(event.target.value); setWrittenMark(null); setWrittenSaved(false) }} placeholder="Write or paste your answer here…" rows={10} value={writtenAnswer} /></label>
+        <p className="assessment-hint">{isMaths ? 'Show the calculation in the box, or work it out by hand and add a photograph.' : 'Choose how to answer: type below, or use handwritten work on your phone.'}</p>
+        <label className="written-answer-label">{isMaths ? 'Enter your working and final answer' : 'Type your answer in the app'}<textarea onChange={(event) => { setWrittenAnswer(event.target.value); setWrittenMark(null); setWrittenSaved(false) }} placeholder={isMaths ? 'Show each step and include the final answer…' : 'Write or paste your answer here…'} rows={isMaths ? 5 : 10} value={writtenAnswer} /></label>
         <div className="answer-divider"><span>or use handwritten work</span></div>
         {recordResults ? <PhoneHandoff topicId={topic.topicId} /> : null}
         <label className="photo-answer">Take or choose up to four clear photographs on this device<input accept="image/png,image/jpeg,image/webp,image/heic,image/heif" multiple onChange={(event) => void selectAnswerImages(event.target.files)} type="file" /></label>

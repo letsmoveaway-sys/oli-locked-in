@@ -91,6 +91,28 @@ describe('API role enforcement', () => {
     expect(response.status).toBe(200)
   })
 
+  it('protects the POC reset behind Parent role and typed confirmation', async () => {
+    const studentToken = await createSessionToken(
+      { id: 'student-1', username: 'student', displayName: 'Student', role: 'student' },
+      env.SESSION_SECRET,
+    )
+    const studentResponse = await handleApi(new Request('https://example.test/api/parent/reset-progress', {
+      method: 'POST', headers: { Cookie: `gcse_session=${studentToken}`, Origin: 'https://example.test', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation: 'RESET PROGRESS' }),
+    }), env)
+    expect(studentResponse.status).toBe(403)
+
+    const parentToken = await createSessionToken(
+      { id: 'parent-1', username: 'parent', displayName: 'Parent', role: 'parent' },
+      env.SESSION_SECRET,
+    )
+    const unconfirmedResponse = await handleApi(new Request('https://example.test/api/parent/reset-progress', {
+      method: 'POST', headers: { Cookie: `gcse_session=${parentToken}`, Origin: 'https://example.test', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation: 'reset' }),
+    }), env)
+    expect(unconfirmedResponse.status).toBe(400)
+  })
+
   it('fails safely when written-answer marking is not configured', async () => {
     const token = await createSessionToken(
       { id: 'student-1', username: 'student', displayName: 'Student', role: 'student' },

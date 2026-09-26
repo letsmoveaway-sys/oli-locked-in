@@ -8,6 +8,8 @@ interface PlanDashboardProps {
   onGenerate: () => Promise<void>
   onStatus: (sessionId: string, status: 'completed' | 'rescheduled') => Promise<void>
   onAvailability: (values: WeeklyAvailability[]) => Promise<void>
+  onViewTopic: (topicId: string) => void
+  onReviewTopic: (topicId: string) => void
 }
 
 const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -16,7 +18,7 @@ function displayDate(date: string): string {
   return new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'short' }).format(new Date(date))
 }
 
-export function PlanDashboard({ sessions, availability, studentMode, onGenerate, onStatus, onAvailability }: PlanDashboardProps) {
+export function PlanDashboard({ sessions, availability, studentMode, onGenerate, onStatus, onAvailability, onViewTopic, onReviewTopic }: PlanDashboardProps) {
   const [busy, setBusy] = useState(false)
   const [minutes, setMinutes] = useState(() => Object.fromEntries(availability.map((item) => [item.weekday, item.availableMinutes])))
   const grouped = sessions.reduce<Record<string, PlanSession[]>>((result, session) => {
@@ -79,10 +81,11 @@ export function PlanDashboard({ sessions, availability, studentMode, onGenerate,
                     <div className="session-duration">{session.plannedMinutes}m</div>
                     {studentMode && session.status === 'planned' ? (
                       <div className="session-actions">
+                        {session.topicId ? <button className="secondary" onClick={() => onViewTopic(session.topicId!)} type="button">Open / resume</button> : null}
                         <button onClick={() => void onStatus(session.id, 'completed')} type="button">Complete</button>
                         <button className="secondary" onClick={() => void onStatus(session.id, 'rescheduled')} type="button">Cannot do</button>
                       </div>
-                    ) : <span className="session-status">{session.status}</span>}
+                    ) : <div className="session-actions"><span className="session-status">{session.status}</span>{session.topicId ? <button className="secondary" onClick={() => onReviewTopic(session.topicId!)} type="button">Review content</button> : null}</div>}
                   </article>
                 ))}
               </div>

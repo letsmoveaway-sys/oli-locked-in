@@ -62,6 +62,12 @@ button { border: 0; border-radius: .6rem; color: #fff; background: #17324d; curs
 button:hover { background: #244c70; }
 button:disabled { cursor: wait; opacity: .65; }
 .secondary { background: transparent; border: 1px solid #17324d; color: #17324d; }
+.danger-button { background: #8f281f; }
+.danger-button:hover { background: #6f1d17; }
+.reset-progress-panel { background: #fff1f0; border: 1px solid #d7a29d; border-radius: .7rem; margin-top: 1rem; padding: .9rem; }
+.reset-progress-panel h4 { color: #761c15; margin: 0 0 .4rem; }
+.reset-progress-panel label { display: grid; gap: .4rem; }
+.reset-progress-panel > div { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .7rem; }
 .error { background: #fff1f0; border-left: 4px solid #a3251b; color: #761c15; padding: .8rem; }
 .success { background: #e8f5ee; border-left: 4px solid #287557; color: #174936; padding: .8rem; }
 .loading { display: grid; min-height: 100vh; place-items: center; font-weight: 700; }
@@ -248,6 +254,7 @@ button:disabled { cursor: wait; opacity: .65; }
 .learning-session__header h1 { color: #17324d; font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1; margin: .25rem 0; }
 .learning-session__header p { margin: 0; }
 .lesson-header-actions { align-items: flex-end; display: grid; gap: .45rem; justify-items: end; }
+.review-mode-notice { background: #eef5ff; border-left: 4px solid #356a9a; color: #17324d; margin: 0 0 .85rem; padding: .8rem 1rem; }
 .lesson-steps { display: grid; gap: .4rem; grid-template-columns: repeat(4, 1fr); margin-bottom: .75rem; }
 .lesson-steps button { background: #e1e8e5; color: #17324d; font-size: .78rem; min-height: 2.7rem; }
 .lesson-steps button[aria-current="step"] { background: #17324d; color: #fff; }

@@ -6,6 +6,7 @@ interface WeeklyPlannerProps {
   onMove: (sessionId: string) => Promise<void>
   onReplan: () => Promise<void>
   onViewTopic: (topicId: string) => void
+  onReviewTopic: (topicId: string) => void
   editable?: boolean
 }
 
@@ -15,7 +16,7 @@ function addDays(date: string, days: number): string {
   return value.toISOString().slice(0, 10)
 }
 
-export function WeeklyPlanner({ sessions, topics, onMove, onReplan, onViewTopic, editable = true }: WeeklyPlannerProps) {
+export function WeeklyPlanner({ sessions, topics, onMove, onReplan, onViewTopic, onReviewTopic, editable = true }: WeeklyPlannerProps) {
   const today = new Date()
   const mondayOffset = (today.getDay() + 6) % 7
   const monday = new Date(today)
@@ -39,7 +40,7 @@ export function WeeklyPlanner({ sessions, topics, onMove, onReplan, onViewTopic,
                     <p>{new Date(session.scheduledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} · {session.plannedMinutes}m</p><h3>{session.subjectName}</h3><span>{session.topicName}</span>
                     {(session.reviewItems ?? []).map((item) => <small className="session-review" key={item.topicId}>Review: {item.topicName}</small>)}
                     <span className={`rag-dot rag-dot--${topic?.ragStatus ?? 'grey'}`} aria-label={topic?.ragStatus ?? 'not assessed'} />
-                    {session.status === 'planned' && session.source !== 'tutor' ? <div><button className="text-button" onClick={() => session.topicId && onViewTopic(session.topicId)} type="button">Topic</button>{editable ? <button className="text-button" onClick={() => void onMove(session.id)} type="button">Postpone / swap</button> : null}</div> : <small className="session-status">{session.status}</small>}
+                    {session.status === 'planned' && session.source !== 'tutor' ? <div><button className="text-button" onClick={() => session.topicId && onViewTopic(session.topicId)} type="button">Open / resume</button>{editable ? <button className="text-button" onClick={() => void onMove(session.id)} type="button">Postpone / swap</button> : null}</div> : <div><small className="session-status">{session.status}</small>{session.topicId ? <button className="text-button" onClick={() => onReviewTopic(session.topicId!)} type="button">Review content</button> : null}</div>}
                   </article>
                 })}
               </div>
