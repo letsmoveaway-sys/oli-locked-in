@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { TopicDetail, TopicRevision, WrittenMark } from '../types'
 import { markWrittenResponse } from '../services/api'
-import { buildExternalMarkingPrompt, parseExternalMarkingResult } from '../services/externalMarking'
+import { buildExternalMarkingPrompt, parseExternalMarkingResult, shareAnswerForMarking } from '../services/externalMarking'
 import { PhoneHandoff } from './PhoneHandoff'
 
 type Stage = 'overview' | 'examples' | 'test' | 'results'
@@ -36,6 +36,7 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
   const [externalResult, setExternalResult] = useState('')
   const [externalError, setExternalError] = useState('')
   const [promptCopied, setPromptCopied] = useState(false)
+  const [shareStatus, setShareStatus] = useState('')
   const [markingRoute, setMarkingRoute] = useState<'automatic' | 'external'>('automatic')
   const maximum = useMemo(() => revision.testQuestions.reduce((sum, question) => sum + question.marks, 0), [revision.testQuestions])
   const writtenQuestion = revision.writtenQuestions[0]
@@ -60,6 +61,7 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
       reader.readAsDataURL(file)
     })))
     setAnswerImages(loaded)
+    if (loaded.length && !revision.automaticMarkingAvailable) setExternalMarkingOpen(true)
   }
 
   async function markWritten() {
@@ -97,6 +99,17 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
       setWrittenMark(mark); setWrittenAnswer(mark.transcription); setMarkingRoute('external')
     } catch (caught) {
       setExternalError(caught instanceof Error ? caught.message : 'The Gemini result could not be read.')
+    }
+  }
+
+  async function shareWithGemini() {
+    setExternalError(''); setShareStatus('')
+    try {
+      await shareAnswerForMarking(externalPrompt, answerImages)
+      setShareStatus('Shared. Choose Gemini, send the message, then copy its complete JSON reply back into the box below.')
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === 'AbortError') return
+      setExternalError('This device cannot share the answer files directly. Use the manual copy-and-open option below.')
     }
   }
 
@@ -145,7 +158,7 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
         {markingError ? <p className="error" role="alert">{markingError}</p> : null}
         {recordResults && revision.automaticMarkingAvailable ? <button disabled={marking || (!writtenAnswer.trim() && !answerImages.length)} onClick={() => void markWritten()} type="button">{marking ? 'Reading and marking…' : writtenMark ? 'Mark automatically again' : 'Mark automatically'}</button> : recordResults ? <p className="assessment-hint">One-tap marking is not connected. Use the free direct Gemini option below—no API key is needed.</p> : <p className="assessment-hint">Sign in as the student to save feedback to progress.</p>}
         <button className="secondary" onClick={() => { setExternalMarkingOpen((open) => !open); setExternalError(''); setPromptCopied(false) }} type="button">{externalMarkingOpen ? 'Hide Gemini instructions' : 'Mark with Gemini — no API key'}</button>
-        {externalMarkingOpen ? <section className="external-marking" aria-labelledby="external-marking-heading"><h3 id="external-marking-heading">No-key Gemini marking</h3><p><strong>No setup or API key is required.</strong> Use your normal Gemini website or app:</p><ol><li>Select <strong>Copy marking prompt</strong> below.</li><li>Select <strong>Open Gemini</strong>, paste the prompt and send it. For handwritten work, take or attach the answer photographs in Gemini—not in this app.</li><li>Copy Gemini’s entire JSON reply, return here, paste it into the result box and select <strong>Import feedback</strong>.</li></ol><p className="assessment-hint">The QR above only moves this question to your phone. These three steps send the answer to Gemini for marking. No Gemini key is stored in this app; Gemini’s own account and usage limits apply.</p><div className="external-marking-actions"><button className="secondary" onClick={() => void copyExternalPrompt()} type="button">{promptCopied ? 'Prompt copied — now open Gemini' : '1. Copy marking prompt'}</button><a className="button-link" href="https://gemini.google.com/app" rel="noreferrer" target="_blank">2. Open Gemini ↗</a></div><label className="written-answer-label">Prepared prompt<textarea onFocus={(event) => event.currentTarget.select()} readOnly rows={8} value={externalPrompt} /></label><label className="written-answer-label">3. Paste Gemini’s complete JSON reply<textarea onChange={(event) => setExternalResult(event.target.value)} placeholder={'Paste the reply beginning with {"estimatedMark": …}'} rows={7} value={externalResult} /></label>{externalError ? <p className="error" role="alert">{externalError}</p> : null}<button disabled={!externalResult.trim()} onClick={importExternalResult} type="button">Import feedback</button></section> : null}
+        {externalMarkingOpen ? <section className="external-marking" aria-labelledby="external-marking-heading"><h3 id="external-marking-heading">No-key Gemini marking</h3><p><strong>No setup or API key is required.</strong></p><section className="share-marking"><h4>Fastest on a phone</h4><ol><li>Take or choose the answer photographs above.</li><li>Select <strong>Share photo and prompt</strong>, then choose Gemini from the phone’s share sheet.</li><li>Send the shared message in Gemini. Copy its complete JSON reply and paste it below.</li></ol><button disabled={!answerImages.length && !writtenAnswer.trim()} onClick={() => void shareWithGemini()} type="button">Share {answerImages.length ? `${answerImages.length} photo${answerImages.length === 1 ? '' : 's'}` : 'typed answer'} and prompt</button>{!answerImages.length && !writtenAnswer.trim() ? <p className="assessment-hint">Add a typed answer or photograph first.</p> : null}{shareStatus ? <p className="success" role="status">{shareStatus}</p> : null}<p className="security-note">The photographs stay on this device until you choose an app from the share sheet.</p></section><div className="answer-divider"><span>manual fallback</span></div><ol><li>Select <strong>Copy marking prompt</strong>.</li><li>Open Gemini, paste the prompt and attach the photographs there.</li><li>Copy Gemini’s entire JSON reply and paste it below.</li></ol><p className="assessment-hint">The QR only moves this question to your phone. Gemini’s own account and usage limits apply.</p><div className="external-marking-actions"><button className="secondary" onClick={() => void copyExternalPrompt()} type="button">{promptCopied ? 'Prompt copied — now open Gemini' : 'Copy marking prompt'}</button><a className="button-link" href="https://gemini.google.com/app" rel="noreferrer" target="_blank">Open Gemini ↗</a></div><label className="written-answer-label">Prepared prompt<textarea onFocus={(event) => event.currentTarget.select()} readOnly rows={8} value={externalPrompt} /></label><label className="written-answer-label">Paste Gemini’s complete JSON reply<textarea onChange={(event) => setExternalResult(event.target.value)} placeholder={'Paste the reply beginning with {"estimatedMark": …}'} rows={7} value={externalResult} /></label>{externalError ? <p className="error" role="alert">{externalError}</p> : null}<button disabled={!externalResult.trim()} onClick={importExternalResult} type="button">Import feedback</button></section> : null}
         {writtenMark ? <div className="written-feedback" aria-live="polite"><div className="result-hero"><div><strong>{writtenMark.estimatedMark}/{writtenMark.maximumMark}</strong><span>estimated</span></div><div><h2>{writtenMark.summary}</h2><p>Marking confidence: {writtenMark.confidence}</p></div></div><div className="feedback-columns"><section><h3>What worked</h3><ul>{writtenMark.strengths.map((strength, index) => <li key={`${strength.point}-${index}`}><strong>{strength.point}</strong>{strength.evidence ? <span> — “{strength.evidence}”</span> : null}</li>)}</ul></section><section><h3>How to improve</h3><ul>{writtenMark.improvements.map((item) => <li key={item}>{item}</li>)}</ul></section></div><p className="next-step"><strong>Your next step:</strong> {writtenMark.nextStep}</p><details><summary>Check what the app read</summary><p className="transcription">{writtenMark.transcription}</p><small>If this is wrong, correct the answer above and choose “Mark corrected answer”.</small></details>{writtenQuestion.canUpdateMastery && writtenMark.confidence !== 'low' ? <button disabled={saving || writtenSaved} onClick={() => void saveWrittenResult()} type="button">{writtenSaved ? 'Estimated result saved' : saving ? 'Saving…' : 'Save estimated result'}</button> : <p className="assessment-hint">This feedback is not being added to mastery{writtenMark.confidence === 'low' ? ' because the marking confidence is low' : ''}.</p>}</div> : null}
       </section> : null}
       {revision.testQuestions.length ? <><h2>Quick knowledge check</h2><p className="lesson-lead">These reviewed questions are marked automatically{recordResults ? ' and saved to progress' : ''}.</p><div className="auto-test">{revision.testQuestions.map((question, index) => <fieldset key={question.id}><legend><span>Question {index + 1}</span>{question.question} <small>{question.marks} {question.marks === 1 ? 'mark' : 'marks'}</small></legend>{question.options.map((option, optionIndex) => <label className="answer-option" key={option}><input checked={answers[question.id] === optionIndex} name={question.id} onChange={() => setAnswers((state) => ({ ...state, [question.id]: optionIndex }))} type="radio" />{option}</label>)}</fieldset>)}</div><div className="lesson-next"><span>{Object.keys(answers).length} of {revision.testQuestions.length} answered</span><button disabled={Object.keys(answers).length !== revision.testQuestions.length} onClick={() => void finishTest()} type="button">Finish and mark check</button></div></> : <div className="lesson-next"><span>No generic quiz has been substituted for this topic.</span><button onClick={onBack} type="button">Finish session</button></div>}

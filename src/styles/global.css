@@ -283,6 +283,9 @@ button:disabled { cursor: wait; opacity: .65; }
 .external-marking { background: #f7faf8; border: 1px solid #cbdcd5; border-radius: .8rem; margin-top: 1rem; padding: 1rem; }
 .external-marking h3 { color: #17324d; margin-top: 0; }
 .external-marking li { margin-bottom: .35rem; }
+.share-marking { background: #e8f5ee; border: 1px solid #abd0bd; border-radius: .7rem; padding: .9rem; }
+.share-marking h4 { color: #17324d; margin: 0 0 .5rem; }
+.share-marking .success { margin-bottom: 0; }
 .external-marking-actions { align-items: center; display: flex; flex-wrap: wrap; gap: .65rem; }
 .button-link { align-items: center; background: #17324d; border-radius: .6rem; color: #fff; display: inline-flex; font-weight: 800; min-height: 3rem; padding: .65rem 1rem; text-decoration: none; }
 .button-link:hover { background: #244c70; }

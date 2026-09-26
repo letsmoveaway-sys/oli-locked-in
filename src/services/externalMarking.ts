@@ -1,5 +1,10 @@
 import type { WrittenMark, WrittenQuestion } from '../types'
 
+export interface ShareableAnswerImage {
+  name: string
+  dataUrl: string
+}
+
 export function buildExternalMarkingPrompt(question: WrittenQuestion, answerText: string): string {
   return `Act as a cautious formative GCSE marker. Mark only the student's actual work. This is an estimate, not an official examiner grade.
 
@@ -75,4 +80,26 @@ export function parseExternalMarkingResult(raw: string, question: WrittenQuestio
     improvements,
     nextStep: text(parsed.nextStep, 'Use the marking requirements to improve one part of the answer.'),
   }
+}
+
+export async function shareAnswerForMarking(
+  prompt: string,
+  images: ShareableAnswerImage[],
+  shareNavigator: Pick<Navigator, 'share' | 'canShare'> = navigator,
+): Promise<void> {
+  if (typeof shareNavigator.share !== 'function') throw new Error('SHARE_UNAVAILABLE')
+  const files = await Promise.all(images.map(async (image, index) => {
+    const response = await fetch(image.dataUrl)
+    const blob = await response.blob()
+    const extension = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'
+    return new File([blob], image.name || `answer-page-${index + 1}.${extension}`, { type: blob.type || 'image/jpeg' })
+  }))
+  if (files.length && typeof shareNavigator.canShare === 'function' && !shareNavigator.canShare({ files })) {
+    throw new Error('FILE_SHARE_UNAVAILABLE')
+  }
+  await shareNavigator.share({
+    title: 'Mark my GCSE answer',
+    text: prompt,
+    ...(files.length ? { files } : {}),
+  })
 }

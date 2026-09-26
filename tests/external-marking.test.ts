@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { buildExternalMarkingPrompt, parseExternalMarkingResult } from '../src/services/externalMarking'
+import { describe, expect, it, vi } from 'vitest'
+import { buildExternalMarkingPrompt, parseExternalMarkingResult, shareAnswerForMarking } from '../src/services/externalMarking'
 import type { WrittenQuestion } from '../src/types'
 
 const question: WrittenQuestion = {
@@ -30,5 +30,17 @@ describe('no-key Gemini marking hand-off', () => {
 
   it('rejects a conversational response instead of inventing a mark', () => {
     expect(() => parseExternalMarkingResult('This looks good.', question, '')).toThrow(/complete JSON result/)
+  })
+
+  it('shares the marking prompt and answer photograph together', async () => {
+    const share = vi.fn().mockResolvedValue(undefined)
+    await shareAnswerForMarking('Prepared marking prompt', [{ name: 'answer.png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }], {
+      share,
+      canShare: vi.fn().mockReturnValue(true),
+    })
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({
+      text: 'Prepared marking prompt',
+      files: [expect.objectContaining({ name: 'answer.png', type: 'image/png' })],
+    }))
   })
 })
