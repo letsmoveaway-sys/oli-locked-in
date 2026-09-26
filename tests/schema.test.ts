@@ -44,4 +44,16 @@ describe('initial migration', () => {
     expect(migration).toContain('CREATE TABLE revision_resources')
     expect(migration).toContain('CREATE TABLE topic_lessons')
   })
+
+  it('configures the confirmed AQA core courses and Trilogy working assumption', () => {
+    const migration = readFileSync('database/migrations/0012_aqa_core_courses.sql', 'utf8')
+    expect(migration).toContain("specification_code = '8300'")
+    expect(migration).toContain("specification_code = '8700'")
+    expect(migration).toContain("specification_code = '8702'")
+    expect(migration).toContain("specification_code = '8464'")
+    expect(migration).toContain("'$.poetryCluster', 'Power and Conflict'")
+    expect(migration).toContain("'$.courseStatus', 'working assumption'")
+    expect(migration).toContain("'science-8464-b1h'")
+    expect(migration).toContain("'english-lit-poem-kamikaze'")
+  })
 })

@@ -38,7 +38,7 @@ Oli's private GCSE dashboard: a complete seven-phase V1 revision and learning ap
    npm run dev
    ```
 
-Sign in with username `student` or `parent` and the matching password chosen in step 2.
+Sign in with username `oliver` or `parent` and the matching password chosen in step 2.
 
 ## Checks
 
@@ -74,7 +74,7 @@ Opening a topic now starts a full-page four-stage session: learn the topic, stud
 
 Built-in History lessons include school-guide-based notes for Medicine and Elizabeth. Other confirmed History topics receive a revision activity and a link to the official specification. In-app practice questions are original; linked exam-board materials remain the authoritative source for official past questions and mark schemes.
 
-Edexcel History is the only confirmed course. Other subjects display their exam board and specification as TBC until the school details are provided. They have no board-specific paper map or revision links and are excluded from topic planning.
+Confirmed courses are AQA Mathematics 8300 Higher, English Language 8700, English Literature 8702 with *Macbeth*, *A Christmas Carol*, *An Inspector Calls* and Power and Conflict, AQA Combined Science: Trilogy 8464 Higher, and Edexcel History 1HI0. Trilogy is recorded as a working assumption pending sight of the final entry code. Other subjects remain TBC and are excluded from topic planning.
 
 ## Architecture
 
@@ -128,13 +128,15 @@ These steps require you to sign into your own Cloudflare account; do not share t
 
 6. Change `ENVIRONMENT` in `wrangler.jsonc` to `production`, run `npm run check`, then deploy with `npm run deploy`.
 
-The remote seed uses generic usernames and display names. Change them directly in D1 if the family wants different private account names. Production deployment is intentionally manual until the Cloudflare account and database are connected; CI validates every push without requiring account secrets.
+The seed creates `oliver` and `parent` accounts. The Oliver username is also applied to existing databases by migration `0011_rename_student_oliver.sql`. Production deployment is intentionally manual; CI validates every push without requiring account secrets.
 
 ## Phase 2 curriculum scope
 
-The local migrations configure Pearson Edexcel GCSE History (1HI0) as the confirmed course. History covers Medicine in Britain and the Western Front (Paper 1, option 11), Early Elizabethan England and The American West (Paper 2, option 2M), and Weimar and Nazi Germany (Paper 3, option 31). The school guides in `SchoolRevisionGuides/History` cover Medicine and Elizabeth; the Edexcel Issue 6 specification supplies the complete map, including Germany and the American West. The requested “Health and the People” unit appears under Edexcel's official title “Medicine in Britain” in the course map. All other subjects remain TBC until their board and specification are supplied.
+The local migrations configure AQA Mathematics 8300 Higher, English Language 8700, English Literature 8702, Combined Science: Trilogy 8464 Higher, and Pearson Edexcel GCSE History 1HI0. English Literature uses *Macbeth*, *A Christmas Carol*, *An Inspector Calls* and Power and Conflict. Trilogy is explicitly recorded as the working Science assumption so a later migration can replace it cleanly if entry code 8465 is confirmed.
 
-Unconfirmed boards, Literature texts, Science course/tier, Geography choices/case studies and D&T specialist area are marked `TBC`. Topic planning includes only confirmed courses.
+History covers Medicine in Britain and the Western Front (Paper 1, option 11), Early Elizabethan England and The American West (Paper 2, option 2M), and Weimar and Nazi Germany (Paper 3, option 31). The school guides in `SchoolRevisionGuides/History` cover Medicine and Elizabeth; the Edexcel Issue 6 specification supplies the complete map, including Germany and the American West.
+
+Geography choices and case studies, Business, and the D&T specialist area remain `TBC`. Topic planning includes only confirmed courses.
 
 ## Phase 4 adaptive planner
 

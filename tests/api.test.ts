@@ -6,6 +6,7 @@ import { createSessionToken } from '../worker/auth/session'
 import type { Env } from '../worker/types'
 
 const env = {
+  ASSETS: { fetch: async () => new Response() },
   DB: {} as Env['DB'],
   ENVIRONMENT: 'test',
   STUDENT_PASSWORD_HASH: 'unused',

@@ -15,7 +15,15 @@ function withSecurityHeaders(response: Response, production: boolean): Response 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
-      const response = await handleApi(request, env)
+      const url = new URL(request.url)
+      if (env.ENVIRONMENT === 'production' && url.protocol === 'http:') {
+        url.protocol = 'https:'
+        return Response.redirect(url, 308)
+      }
+
+      const response = url.pathname.startsWith('/api/')
+        ? await handleApi(request, env)
+        : await env.ASSETS.fetch(request)
       return withSecurityHeaders(response, env.ENVIRONMENT === 'production')
     } catch (error) {
       console.error('Unhandled API error', error instanceof Error ? error.message : 'Unknown error')

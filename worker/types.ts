@@ -3,6 +3,7 @@ import type { D1Database, RateLimit } from '@cloudflare/workers-types'
 export type UserRole = 'student' | 'parent'
 
 export interface Env {
+  ASSETS: { fetch(request: Request): Promise<Response> }
   DB: D1Database
   LOGIN_RATE_LIMITER?: RateLimit
   ENVIRONMENT: string
