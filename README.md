@@ -128,7 +128,7 @@ These steps require you to sign into your own Cloudflare account; do not share t
    npx wrangler secret put GEMINI_API_KEY
    ```
 
-   `GEMINI_API_KEY` is optional. Without it, students can choose **Use Gemini directly — no API key**, copy the app's marking prompt, photograph their work in their own Gemini session, and paste the structured feedback back into the app. With a key, the one-tap automatic marking route is also available. A configured key is used only by the Worker and is never returned to the browser. `GEMINI_MODEL` defaults to `gemini-2.5-flash` and can be set as a non-secret Worker variable.
+   `GEMINI_API_KEY` is optional. Without it, students can choose **Mark with Gemini — no API key**, copy the app's marking prompt, photograph their work in their own Gemini session, and paste the structured feedback back into the app. With a key, the one-tap automatic marking route is also available. A configured key is used only by the Worker and is never returned to the browser. `GEMINI_MODEL` defaults to `gemini-2.5-flash` and can be set as a non-secret Worker variable.
 
    Generate hashes with the current `npm run auth:hash` script. Cloudflare's Worker PBKDF2 implementation rejects the older 210,000-iteration hashes; the script now uses 100,000 iterations. Use long, unique passwords and keep the production passwords in a password manager.
 

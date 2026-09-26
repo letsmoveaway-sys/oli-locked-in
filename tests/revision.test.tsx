@@ -73,8 +73,8 @@ describe('revision learning content', () => {
   it('offers a direct Gemini marking flow that does not need an API key', () => {
     render(<LearningSession onBack={() => undefined} onResult={vi.fn().mockResolvedValue(undefined)} onReviseNow={vi.fn().mockResolvedValue(undefined)} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
     fireEvent.click(screen.getByRole('button', { name: '3. Test yourself' }))
-    fireEvent.click(screen.getByRole('button', { name: /Use Gemini directly/ }))
-    expect(screen.getByRole('heading', { name: /Mark with your own free Gemini session/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Mark with Gemini.*no API key/ }))
+    expect(screen.getByRole('heading', { name: /No-key Gemini marking/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open Gemini/ })).toHaveAttribute('href', 'https://gemini.google.com/app')
     expect(screen.getByDisplayValue(/Return only valid JSON/)).toBeInTheDocument()
   })
