@@ -10,6 +10,8 @@ export interface Env {
   STUDENT_PASSWORD_HASH: string
   PARENT_PASSWORD_HASH: string
   SESSION_SECRET: string
+  GEMINI_API_KEY?: string
+  GEMINI_MODEL?: string
 }
 
 export interface UserRecord {

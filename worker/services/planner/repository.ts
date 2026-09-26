@@ -284,8 +284,8 @@ export async function completeSession(user: SessionUser, input: SessionCompletio
     const assessmentId = crypto.randomUUID()
     await env.DB.prepare(
       `INSERT INTO assessments
-        (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, completed_at, created_at)
-       VALUES (?, ?, ?, ?, 100, ?, 'Session check', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, marking_source, completed_at, created_at)
+       VALUES (?, ?, ?, ?, 100, ?, 'Session check', 'self_reported', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
     ).bind(assessmentId, profile.user_id, session.topic_id, input.assessmentPercentage, input.assessmentPercentage).run()
     await awardQuizXp(profile.user_id, assessmentId, env)
   }
@@ -307,8 +307,8 @@ export async function completeSession(user: SessionUser, input: SessionCompletio
       const assessmentId = crypto.randomUUID()
       await env.DB.prepare(
         `INSERT INTO assessments
-          (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, completed_at, created_at)
-         VALUES (?, ?, ?, ?, 100, ?, 'Delayed retrieval check', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+          (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, marking_source, completed_at, created_at)
+         VALUES (?, ?, ?, ?, 100, ?, 'Delayed retrieval check', 'self_reported', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       ).bind(assessmentId, profile.user_id, item.topicId, submitted.percentage, submitted.percentage).run()
       await awardQuizXp(profile.user_id, assessmentId, env)
     }

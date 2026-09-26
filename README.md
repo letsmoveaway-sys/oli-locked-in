@@ -68,9 +68,11 @@ Open **Learn & practise** after signing in. Confirmed subjects include:
 - clear advice on what examiners award marks for;
 - links to the official specification, past papers and mark schemes, plus selected free learning resources;
 - a navigable topic map whose confirmed topics open revision activities;
-- learning objectives, key knowledge, worked examples, original practice questions, hints and revealable model answers.
+- learning objectives, key knowledge, worked examples, original practice questions, mark-appropriate exemplars and plain-English explanations of why an answer earns credit.
 
-Opening a topic now starts a full-page four-stage session: learn the topic, study worked examples, complete an independent test, then review the marked answers and direct topic resources. Test questions are automatically marked by weighted marks; Student results are saved directly to mastery and influence later planning. No manual percentage entry is needed.
+Opening a topic starts a full-page four-stage session: learn the topic, study worked examples, complete independent practice, then review marked answers and direct topic resources. Reviewed multiple-choice questions are automatically marked. Written-answer activities include a **Continue on phone** QR hand-off that opens the exact topic at the answer stage after normal sign-in; the QR contains no password or session. Written responses can be typed or supplied as up to four photographs and can use either the no-key Gemini hand-off or optional one-tap server-side marking. The Student chooses whether a sufficiently confident AI estimate is saved. Parent-facing evidence labels results as auto-marked, AI-estimated, self-reported or teacher-marked.
+
+Generic topic-description quizzes are not used. A topic without reviewed assessment content shows starter guidance and official resources; its practice can receive feedback but cannot change mastery. This applies to every subject, not only English.
 
 Built-in History lessons include school-guide-based notes for Medicine and Elizabeth. Other confirmed History topics receive a revision activity and a link to the official specification. In-app practice questions are original; linked exam-board materials remain the authoritative source for official past questions and mark schemes.
 
@@ -122,7 +124,11 @@ These steps require you to sign into your own Cloudflare account; do not share t
    npx wrangler secret put STUDENT_PASSWORD_HASH
    npx wrangler secret put PARENT_PASSWORD_HASH
    npx wrangler secret put SESSION_SECRET
+   # Optional: enables one-tap automatic marking inside the app
+   npx wrangler secret put GEMINI_API_KEY
    ```
+
+   `GEMINI_API_KEY` is optional. Without it, students can choose **Use Gemini directly — no API key**, copy the app's marking prompt, photograph their work in their own Gemini session, and paste the structured feedback back into the app. With a key, the one-tap automatic marking route is also available. A configured key is used only by the Worker and is never returned to the browser. `GEMINI_MODEL` defaults to `gemini-2.5-flash` and can be set as a non-secret Worker variable.
 
    Generate hashes with the current `npm run auth:hash` script. Cloudflare's Worker PBKDF2 implementation rejects the older 210,000-iteration hashes; the script now uses 100,000 iterations. Use long, unique passwords and keep the production passwords in a password manager.
 

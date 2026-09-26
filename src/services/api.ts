@@ -1,4 +1,4 @@
-import type { Analytics, ApiError, Confidence, CourseSubject, PlanSession, SessionCompletionInput, SessionUser, SubjectRevisionGuide, TopicDetail, TopicProgress, TopicRevision, WeeklyAvailability } from '../types'
+import type { Analytics, ApiError, Confidence, CourseSubject, PlanSession, SessionCompletionInput, SessionUser, SubjectRevisionGuide, TopicDetail, TopicProgress, TopicRevision, WeeklyAvailability, WrittenMark } from '../types'
 
 interface SessionResponse {
   user: SessionUser
@@ -70,10 +70,16 @@ export async function recordAssessment(
   topicId: string,
   score: number,
   maximumScore: number,
+  evidence: {
+    assessmentType?: string
+    markingSource?: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'
+    markingConfidence?: 'low' | 'medium' | 'high' | null
+    feedback?: { summary?: string; nextStep?: string }
+  } = {},
 ): Promise<TopicProgress[]> {
   return (await request<{ topics: TopicProgress[] }>('/api/assessments', {
     method: 'POST',
-    body: JSON.stringify({ topicId, score, maximumScore, assessmentType: 'Practice assessment' }),
+    body: JSON.stringify({ topicId, score, maximumScore, assessmentType: evidence.assessmentType ?? 'Practice assessment', markingSource: evidence.markingSource ?? 'self_reported', markingConfidence: evidence.markingConfidence ?? null, feedback: evidence.feedback ?? null }),
   })).topics
 }
 
@@ -115,6 +121,17 @@ export async function getSubjectRevision(subjectId: string): Promise<SubjectRevi
 
 export async function getTopicRevision(topicId: string): Promise<TopicRevision> {
   return (await request<{ revision: TopicRevision }>(`/api/revision/topic?topicId=${encodeURIComponent(topicId)}`)).revision
+}
+
+export async function markWrittenResponse(input: {
+  topicId: string
+  questionId: string
+  answerText: string
+  imageDataUrls: string[]
+}): Promise<WrittenMark> {
+  return (await request<{ mark: WrittenMark }>('/api/marking/written', {
+    method: 'POST', body: JSON.stringify(input),
+  })).mark
 }
 
 export async function reviseNow(topicId: string): Promise<{ sessions: PlanSession[]; message: string }> {

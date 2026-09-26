@@ -90,4 +90,18 @@ describe('API role enforcement', () => {
     }), env)
     expect(response.status).toBe(200)
   })
+
+  it('fails safely when written-answer marking is not configured', async () => {
+    const token = await createSessionToken(
+      { id: 'student-1', username: 'student', displayName: 'Student', role: 'student' },
+      env.SESSION_SECRET,
+    )
+    const response = await handleApi(new Request('https://example.test/api/marking/written', {
+      method: 'POST',
+      headers: { Cookie: `gcse_session=${token}`, Origin: 'https://example.test', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicId: 'topic-1', questionId: 'question-1', answerText: 'My answer', imageDataUrls: [] }),
+    }), env)
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'AI_MARKING_UNAVAILABLE' } })
+  })
 })

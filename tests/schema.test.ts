@@ -62,4 +62,11 @@ describe('initial migration', () => {
     expect(migration).toContain('review_items_json')
     expect(migration).toContain('spaced_review_policy')
   })
+
+  it('records how assessment evidence was marked', () => {
+    const migration = readFileSync('database/migrations/0014_assessment_evidence.sql', 'utf8')
+    expect(migration).toContain('marking_source')
+    expect(migration).toContain('marking_confidence')
+    expect(migration).toContain('feedback_json')
+  })
 })

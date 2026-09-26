@@ -28,6 +28,7 @@ import { apiError, json, readJsonObject } from './responses'
 import { getAnalytics } from '../services/analytics'
 import { updateWeeklyGoal } from '../services/gamification'
 import { getSubjectRevision, getTopicRevision } from '../services/revision'
+import { markWrittenAnswer } from '../services/marking'
 
 function sameOrigin(request: Request): boolean {
   const origin = request.headers.get('Origin')
@@ -191,6 +192,35 @@ async function handleTopicRevision(request: Request, env: Env): Promise<Response
   return revision ? json({ revision }) : apiError('NOT_FOUND', 'Revision content not found.', 404)
 }
 
+async function handleWrittenMarking(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') return methodNotAllowed()
+  if (!sameOrigin(request)) return apiError('INVALID_ORIGIN', 'The request origin was rejected.', 403)
+  const user = await requireSession(request, env.SESSION_SECRET, 'student')
+  if (!user) return apiError('FORBIDDEN', 'This operation requires a Student account.', 403)
+  if (!env.GEMINI_API_KEY) return apiError('AI_MARKING_UNAVAILABLE', 'Photo and written-answer marking has not been configured yet.', 503)
+  const body = await readJsonObject(request)
+  const topicId = typeof body?.topicId === 'string' ? body.topicId : ''
+  const questionId = typeof body?.questionId === 'string' ? body.questionId : ''
+  const answerText = typeof body?.answerText === 'string' ? body.answerText.trim() : ''
+  const imageDataUrls = Array.isArray(body?.imageDataUrls)
+    ? body.imageDataUrls.filter((item): item is string => typeof item === 'string')
+    : []
+  if (!topicId || !questionId || answerText.length > 20_000 || imageDataUrls.length > 4 || (!answerText && imageDataUrls.length === 0)) {
+    return apiError('INVALID_REQUEST', 'Add a written answer or up to four clear answer photographs.', 400)
+  }
+  const revision = await getTopicRevision(user, topicId, env)
+  const question = revision?.writtenQuestions.find((item) => item.id === questionId)
+  if (!question) return apiError('NOT_FOUND', 'That written question is not available.', 404)
+  try {
+    return json({ mark: await markWrittenAnswer(question, answerText, imageDataUrls, env) })
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : ''
+    if (message === 'INVALID_IMAGE') return apiError('INVALID_IMAGE', 'Use a clear JPEG, PNG, WebP, HEIC or HEIF image smaller than 8 MB.', 400)
+    if (message === 'EMPTY_ANSWER') return apiError('INVALID_REQUEST', 'Add an answer before asking for feedback.', 400)
+    return apiError('AI_MARKING_FAILED', 'The answer could not be marked just now. Your work has not been lost; please try again.', 502)
+  }
+}
+
 async function handleConfidence(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'PUT') return methodNotAllowed()
   if (!sameOrigin(request)) return apiError('INVALID_ORIGIN', 'The request origin was rejected.', 403)
@@ -219,12 +249,21 @@ async function handleAssessment(request: Request, env: Env): Promise<Response> {
   const score = typeof body?.score === 'number' ? body.score : Number.NaN
   const maximumScore = typeof body?.maximumScore === 'number' ? body.maximumScore : Number.NaN
   const assessmentType = typeof body?.assessmentType === 'string' ? body.assessmentType.trim() : ''
+  const markingSources = ['auto_marked', 'ai_estimated', 'self_reported', 'teacher_marked'] as const
+  const markingConfidences = ['low', 'medium', 'high'] as const
+  const markingSource = markingSources.find((value) => value === body?.markingSource) ?? 'self_reported'
+  const markingConfidence = markingConfidences.find((value) => value === body?.markingConfidence) ?? null
+  const feedbackValue = body?.feedback && typeof body.feedback === 'object' && !Array.isArray(body.feedback) ? body.feedback as Record<string, unknown> : null
+  const feedback = feedbackValue ? {
+    summary: typeof feedbackValue.summary === 'string' ? feedbackValue.summary.slice(0, 1000) : undefined,
+    nextStep: typeof feedbackValue.nextStep === 'string' ? feedbackValue.nextStep.slice(0, 1000) : undefined,
+  } : null
   if (
     !topicId || !Number.isFinite(score) || !Number.isFinite(maximumScore) ||
     score < 0 || maximumScore <= 0 || score > maximumScore ||
     !assessmentType || assessmentType.length > 50
   ) return apiError('INVALID_REQUEST', 'Enter a valid assessment score.', 400)
-  if (!(await addAssessment(user, topicId, score, maximumScore, assessmentType, env))) {
+  if (!(await addAssessment(user, topicId, score, maximumScore, assessmentType, env, { markingSource, markingConfidence, feedback }))) {
     return apiError('NOT_FOUND', 'That topic is not currently available for assessment.', 404)
   }
   return json({ topics: await getProgress(user, env) }, 201)
@@ -396,6 +435,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
   if (path === '/api/topics/detail') return handleTopicDetail(request, env)
   if (path === '/api/revision/subject') return handleSubjectRevision(request, env)
   if (path === '/api/revision/topic') return handleTopicRevision(request, env)
+  if (path === '/api/marking/written') return handleWrittenMarking(request, env)
   if (path === '/api/progress/confidence') return handleConfidence(request, env)
   if (path === '/api/assessments') return handleAssessment(request, env)
   if (path === '/api/planner') return handlePlanner(request, env)

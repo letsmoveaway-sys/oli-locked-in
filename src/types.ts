@@ -117,6 +117,9 @@ export interface TopicDetail extends TopicProgress {
   assessments: Array<{
     percentage: number
     assessmentType: string
+    markingSource: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'
+    markingConfidence: 'low' | 'medium' | 'high' | null
+    feedback: { summary?: string; nextStep?: string } | null
     completedAt: string
   }>
   sessions: Array<{
@@ -162,8 +165,35 @@ export interface TopicRevision {
   workedExample: { title: string; prompt: string; steps: string[]; answer: string }
   practiceQuestions: Array<{ question: string; hint: string; answer: string; marks: number }>
   testQuestions: Array<{ id: string; question: string; options: string[]; correctOption: number; explanation: string; marks: number }>
+  writtenQuestions: WrittenQuestion[]
+  assessmentAvailable: boolean
+  automaticMarkingAvailable?: boolean
   resources: RevisionResource[]
   bespoke: boolean
+}
+
+export interface WrittenQuestion {
+  id: string
+  question: string
+  marks: number
+  suggestedMinutes: number
+  expectedLength: string
+  hint: string
+  markingPoints: string[]
+  exemplar: string
+  exemplarAnnotations: Array<{ label: string; explanation: string }>
+  canUpdateMastery: boolean
+}
+
+export interface WrittenMark {
+  estimatedMark: number
+  maximumMark: number
+  confidence: 'low' | 'medium' | 'high'
+  transcription: string
+  summary: string
+  strengths: Array<{ point: string; evidence: string }>
+  improvements: string[]
+  nextStep: string
 }
 
 export interface Analytics {

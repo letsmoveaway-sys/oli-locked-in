@@ -4,4 +4,6 @@ PARENT_PASSWORD_HASH="replace-with-generated-value"
 # Generate at least 32 random bytes, for example with a password manager.
 SESSION_SECRET="replace-with-a-long-random-secret"
 ENVIRONMENT="development"
-
+# Optional. Enables one-tap marking; the direct Gemini hand-off works without it.
+GEMINI_API_KEY="replace-with-a-google-ai-api-key"
+GEMINI_MODEL="gemini-2.5-flash"

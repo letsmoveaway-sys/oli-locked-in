@@ -118,8 +118,8 @@ export async function getTopicDetail(user: SessionUser, topicId: string, env: En
       .bind(studentId, topicId).first<{ notes: string | null }>(),
     env.DB.prepare('SELECT score, recorded_at, reason FROM mastery_history WHERE student_id = ? AND topic_id = ? ORDER BY recorded_at DESC LIMIT 20')
       .bind(studentId, topicId).all<{ score: number; recorded_at: string; reason: string }>(),
-    env.DB.prepare('SELECT percentage, assessment_type, completed_at FROM assessments WHERE student_id = ? AND topic_id = ? ORDER BY completed_at DESC LIMIT 20')
-      .bind(studentId, topicId).all<{ percentage: number; assessment_type: string; completed_at: string }>(),
+    env.DB.prepare('SELECT percentage, assessment_type, marking_source, marking_confidence, feedback_json, completed_at FROM assessments WHERE student_id = ? AND topic_id = ? ORDER BY completed_at DESC LIMIT 20')
+      .bind(studentId, topicId).all<{ percentage: number; assessment_type: string; marking_source: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'; marking_confidence: 'low' | 'medium' | 'high' | null; feedback_json: string | null; completed_at: string }>(),
     env.DB.prepare(`SELECT id, scheduled_at, planned_minutes, actual_minutes, status, session_type, confidence_after, notes
                     FROM revision_sessions WHERE student_id = ? AND topic_id = ?
                     ORDER BY scheduled_at DESC LIMIT 20`)
@@ -130,7 +130,7 @@ export async function getTopicDetail(user: SessionUser, topicId: string, env: En
     ...topic,
     notes: progress?.notes ?? '',
     masteryHistory: history.results.map((item) => ({ score: item.score, recordedAt: item.recorded_at, reason: item.reason })),
-    assessments: assessments.results.map((item) => ({ percentage: item.percentage, assessmentType: item.assessment_type, completedAt: item.completed_at })),
+    assessments: assessments.results.map((item) => ({ percentage: item.percentage, assessmentType: item.assessment_type, markingSource: item.marking_source, markingConfidence: item.marking_confidence, feedback: item.feedback_json ? JSON.parse(item.feedback_json) as { summary?: string; nextStep?: string } : null, completedAt: item.completed_at })),
     sessions: sessions.results.map((item) => ({
       id: item.id,
       scheduledAt: item.scheduled_at,
@@ -221,15 +221,16 @@ export async function addAssessment(
   maximumScore: number,
   assessmentType: string,
   env: Env,
+  evidence: { markingSource?: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'; markingConfidence?: 'low' | 'medium' | 'high' | null; feedback?: { summary?: string; nextStep?: string } | null } = {},
 ): Promise<boolean> {
   if (!(await topicAvailable(user.id, topicId, env))) return false
   const percentage = Math.round((score / maximumScore) * 1000) / 10
   const assessmentId = crypto.randomUUID()
   await env.DB.prepare(
     `INSERT INTO assessments
-      (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, completed_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-  ).bind(assessmentId, user.id, topicId, score, maximumScore, percentage, assessmentType).run()
+      (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, marking_source, marking_confidence, feedback_json, completed_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+  ).bind(assessmentId, user.id, topicId, score, maximumScore, percentage, assessmentType, evidence.markingSource ?? 'auto_marked', evidence.markingConfidence ?? null, evidence.feedback ? JSON.stringify(evidence.feedback) : null).run()
   await awardQuizXp(user.id, assessmentId, env)
   return recalculateTopicMastery(user.id, topicId, `${assessmentType} recorded at ${percentage}%`, env)
 }

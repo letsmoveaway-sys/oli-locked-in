@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   addAvailabilityException, completeSession, generatePlan, getAnalytics, getAvailability, getPlan, getProgress, getSubjectRevision, getSubjects, getTopicDetail, getTopicRevision,
   recordAssessment, replan, reviseNow, saveAvailability as saveAvailabilityRequest, setSessionStatus, setWeeklyGoal, updateConfidence, updateCourse,
@@ -38,6 +38,7 @@ export function Home({ user, onSignOut }: HomeProps) {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const phoneHandoffOpened = useRef(false)
 
   useEffect(() => {
     void Promise.all([getSubjects(), getProgress(), getPlan(), getAvailability(), getAnalytics()])
@@ -71,9 +72,9 @@ export function Home({ user, onSignOut }: HomeProps) {
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save confidence.'); throw caught }
   }
 
-  async function saveAssessment(topicId: string, score: number, maximumScore: number) {
+  async function saveAssessment(topicId: string, score: number, maximumScore: number, evidence: Parameters<typeof recordAssessment>[3] = {}) {
     setError('')
-    try { setProgress(await recordAssessment(topicId, score, maximumScore)); setAnalytics(await getAnalytics()); setMessage('Assessment result recorded and mastery recalculated.') }
+    try { setProgress(await recordAssessment(topicId, score, maximumScore, evidence)); setAnalytics(await getAnalytics()); setMessage('Assessment result recorded and mastery recalculated.') }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to record the assessment.') }
   }
 
@@ -109,8 +110,17 @@ export function Home({ user, onSignOut }: HomeProps) {
     finally { setTopicLoading(false) }
   }
 
-  async function assessFromTopic(topicId: string, score: number, maximumScore: number) {
-    await saveAssessment(topicId, score, maximumScore); setTopicDetail(await getTopicDetail(topicId))
+  useEffect(() => {
+    if (phoneHandoffOpened.current) return
+    const params = new URLSearchParams(window.location.search)
+    const topicId = params.get('handoff') === 'phone' ? params.get('topic') ?? '' : ''
+    if (!/^[a-z0-9-]{1,100}$/.test(topicId)) return
+    phoneHandoffOpened.current = true
+    void openTopic(topicId)
+  }, [])
+
+  async function assessFromTopic(topicId: string, score: number, maximumScore: number, evidence?: Parameters<typeof recordAssessment>[3]) {
+    await saveAssessment(topicId, score, maximumScore, evidence); setTopicDetail(await getTopicDetail(topicId))
   }
 
   async function startRevisionNow(topicId: string) {
@@ -134,6 +144,11 @@ export function Home({ user, onSignOut }: HomeProps) {
   }
 
   function closeLesson() {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('handoff') === 'phone') {
+      url.searchParams.delete('topic'); url.searchParams.delete('stage'); url.searchParams.delete('handoff')
+      window.history.replaceState({}, '', url)
+    }
     setTopicDetail(null); setTopicRevision(null); setTopicLoading(false); setView(previousView === 'lesson' ? 'content' : previousView)
   }
 
