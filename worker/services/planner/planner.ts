@@ -204,8 +204,10 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
 
     if (minutes < context.defaultSessionMinutes) continue
     const subjectCounts = new Map<string, number>()
+    const topicIdsToday = new Set<string>()
     for (const session of output.filter((item) => dateOnly(item.scheduledAt) === date)) {
       subjectCounts.set(session.subjectId, (subjectCounts.get(session.subjectId) ?? 0) + 1)
+      if (session.topicId) topicIdsToday.add(session.topicId)
     }
     let slotIndex = 0
     while (minutes >= context.defaultSessionMinutes) {
@@ -224,7 +226,9 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
           return { topic, priority }
         })
         .sort((left, right) => right.priority - left.priority || left.topic.name.localeCompare(right.topic.name))
-      const selected = candidates[0]
+      const selected = candidates.find(({ topic }) => !subjectCounts.has(topic.subjectId))
+        ?? candidates.find(({ topic }) => !topicIdsToday.has(topic.id))
+        ?? candidates[0]
       if (!selected || selected.priority <= 0) break
 
       let generatedId = `generated-${date}-${slotIndex}`
@@ -246,6 +250,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
       })
       workload.set(selected.topic.id, Math.max(0, (workload.get(selected.topic.id) ?? 0) - 1))
       subjectCounts.set(selected.topic.subjectId, (subjectCounts.get(selected.topic.subjectId) ?? 0) + 1)
+      topicIdsToday.add(selected.topic.id)
       previousTopicId = selected.topic.id
       previousSubjectId = selected.topic.subjectId
       minutes -= context.defaultSessionMinutes

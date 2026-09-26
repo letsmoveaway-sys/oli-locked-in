@@ -101,6 +101,33 @@ describe('adaptive planner', () => {
     expect(plan.some((session) => session.source === 'generated' && session.subjectId === 'science')).toBe(true)
   })
 
+  it('mixes subjects within a day even when one topic has much higher priority', () => {
+    const plan = generateRevisionPlan(context({
+      availability: [{ weekday: 3, availableMinutes: 105, startTime: '17:00' }],
+      topics: [
+        topic({ latestAssessment: 10, requestedMore: true }),
+        topic({ id: 'topic-science', subjectId: 'science', subjectName: 'Science', name: 'Cells', masteryScore: 85, ragStatus: 'green', latestAssessment: 90 }),
+        topic({ id: 'topic-english', subjectId: 'english', subjectName: 'English', name: 'Creative reading', masteryScore: 85, ragStatus: 'green', latestAssessment: 90 }),
+      ],
+    }), 1).filter((session) => session.source === 'generated')
+
+    expect(plan).toHaveLength(3)
+    expect(new Set(plan.map((session) => session.subjectId))).toEqual(new Set(['maths', 'science', 'english']))
+    expect(new Set(plan.map((session) => session.topicId)).size).toBe(3)
+  })
+
+  it('uses a different topic before repeating within the same subject', () => {
+    const plan = generateRevisionPlan(context({
+      availability: [{ weekday: 3, availableMinutes: 70, startTime: '17:00' }],
+      topics: [
+        topic({ latestAssessment: 10, requestedMore: true }),
+        topic({ id: 'topic-geometry', name: 'Geometry', masteryScore: 85, ragStatus: 'green', latestAssessment: 90 }),
+      ],
+    }), 1).filter((session) => session.source === 'generated')
+
+    expect(plan.map((session) => session.topicId)).toEqual(['topic-maths', 'topic-geometry'])
+  })
+
   it('does not duplicate a persisted recurring tutor occurrence', () => {
     const existingTutor = {
       id: 'tutor-maths-tutor-2026-09-22', topicId: null, subjectId: 'maths', subjectName: 'Mathematics', topicName: 'Mathematics tutor',
