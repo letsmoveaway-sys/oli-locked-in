@@ -31,6 +31,10 @@ Priority meanings:
 - [x] Make Progress manageable with priority defaults, subject/RAG filters and search.
 - [x] Let the learner explain why a session cannot be done and show exactly where it moved.
 - [x] Reduce phone header space and move primary controls into bottom navigation.
+- [x] Make one clear Start/Resume action primary; move logging work completed elsewhere and inability to attend into secondary options.
+- [x] Replace the empty 0/145-style first-use dashboard with a short first-week journey and plain-language RAG labels.
+- [x] Prioritise today's planned topic for quick revision before falling back to due or weak topics.
+- [x] Put the next planned lesson first in Learn, use a phone-friendly subject picker and collapse the long exam reference guide.
 
 ## P1 — UK GCSE configuration and planning
 
@@ -44,6 +48,7 @@ Priority meanings:
 ## P1 — content quality and exam usefulness
 
 - [x] Treat the app as a planner/retrieval tool until content depth is expanded; do not imply that it replaces teaching, textbooks or past papers.
+- [x] Apply content standard 2.0 to every confirmed syllabus leaf: topic-specific core notes, at least three learning objectives, common mistakes, exam-use guidance and a retrieval/application/independent-practice ladder. Automated coverage verifies all active subjects.
 - [ ] Replace generic fallback teaching with topic-specific explanations, misconceptions, vocabulary, diagrams, equations, required practicals and worked examples. Prioritise high-weight and weak topics first.
 - [ ] Expand each topic from one principal written question to a question ladder: retrieval, standard application, unfamiliar application and an exam-style extended response where appropriate.
 - [ ] Increase instant self-marking coverage beyond the current small set of auto-marked topics. Give diagnostic feedback for each distractor or common method error.
@@ -87,7 +92,7 @@ Priority meanings:
 
 ## Validation already completed
 
-- TypeScript and unit/integration checks: **82 passing**.
+- TypeScript and unit/integration checks: **84 passing**.
 - Playwright critical journeys: **8 passing** across desktop Chromium and Pixel 7 emulation, including automated WCAG checks on representative screens.
 - Production build: passing.
 - Dependency audit: **0 known vulnerabilities**.

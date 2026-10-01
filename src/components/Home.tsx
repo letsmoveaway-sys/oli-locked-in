@@ -52,6 +52,10 @@ export function Home({ user, onSignOut }: HomeProps) {
   const [error, setError] = useState('')
   const [moreOpen, setMoreOpen] = useState(false)
   const phoneHandoffOpened = useRef(false)
+  const activeSubjects = subjects.filter((subject) => subject.active)
+  const nextLearningSession = plan
+    .filter((session) => session.status === 'planned' && session.topicId)
+    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0]
 
   async function loadDashboard() {
     setLoading(true); setError('')
@@ -176,11 +180,6 @@ export function Home({ user, onSignOut }: HomeProps) {
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save the knowledge check.'); throw caught }
   }
 
-  async function startRevisionNow(topicId: string) {
-    const result = await reviseNow(topicId, 10)
-    setPlan(result.sessions); setMessage(result.message); setTopicDetail(null); setTopicRevision(null); navigate('today')
-  }
-
   async function beginPlannedSession(sessionId: string, topicId: string) {
     setError('')
     try {
@@ -272,7 +271,7 @@ export function Home({ user, onSignOut }: HomeProps) {
 
   if (view === 'lesson') return <main className="app-shell learning-shell" id="main-content">
     {topicLoading ? <div className="lesson-loading card"><p className="loading-inline">Preparing your revision session…</p></div> : null}
-    {!topicLoading && topicDetail && topicRevision ? <LearningSession onBack={closeLesson} onKnowledgeCheck={saveKnowledgeCheck} onResult={assessFromTopic} onReviseNow={startRevisionNow} recordResults={user.role === 'student' && !lessonReadOnly} reviewMode={lessonReadOnly} revision={topicRevision} topic={topicDetail} /> : null}
+    {!topicLoading && topicDetail && topicRevision ? <LearningSession onBack={closeLesson} onKnowledgeCheck={saveKnowledgeCheck} onResult={assessFromTopic} recordResults={user.role === 'student' && !lessonReadOnly} reviewMode={lessonReadOnly} revision={topicRevision} topic={topicDetail} /> : null}
     {!topicLoading && (!topicDetail || !topicRevision) ? <div className="card"><p className="error">The revision session could not be loaded.</p><button onClick={closeLesson} type="button">Back to the course</button></div> : null}
   </main>
 
@@ -308,14 +307,20 @@ export function Home({ user, onSignOut }: HomeProps) {
       </nav>}
       {message ? <p className="success" role="status">{message}</p> : null}{error ? <div className="error error-with-action" role="alert"><span>{error}</span><button className="secondary" onClick={() => void loadDashboard()} type="button">Retry dashboard</button></div> : null}{loading ? <p className="loading-inline">Loading course data…</p> : null}
       {!loading && view === 'parent' && analytics ? <ParentDashboard analytics={analytics} onAiMarking={changeAiMarkingPreference} onExport={downloadStudentData} onNavigate={(next) => navigate(next)} onResetProgress={resetTrialProgress} /> : null}
-      {!loading && view === 'today' ? <><TodayDashboard analytics={analytics} sessions={plan} topics={progress} editable={user.role === 'student'} onComplete={finishSession} onCannotDo={changeSessionStatus} onQuickRevision={beginQuickRevision} onReviewTopic={(id) => void openTopic(id, true)} onStart={beginPlannedSession} onViewTopic={(id) => void openTopic(id)} onOpenWeek={() => navigate('week')} />{analytics ? <GamificationCard data={analytics.gamification} editable={user.role === 'student'} onGoal={saveWeeklyGoal} /> : null}</> : null}
+      {!loading && view === 'today' ? <><TodayDashboard analytics={analytics} sessions={plan} topics={progress} editable={user.role === 'student'} onComplete={finishSession} onCannotDo={changeSessionStatus} onQuickRevision={beginQuickRevision} onReviewTopic={(id) => void openTopic(id, true)} onStart={beginPlannedSession} onViewTopic={(id) => void openTopic(id)} onOpenWeek={() => navigate('week')} />{analytics && (analytics.gamification.xp > 0 || analytics.gamification.weeklyCompletedMinutes > 0) ? <GamificationCard data={analytics.gamification} editable={user.role === 'student'} onGoal={saveWeeklyGoal} /> : null}</> : null}
       {!loading && view === 'week' ? <WeeklyPlanner editable={user.role === 'student'} sessions={plan} topics={progress} onComplete={finishSession} onMove={changeSessionStatus} onReplan={requestReplan} onReviewTopic={(id) => void openTopic(id, true)} onViewTopic={(id) => void openTopic(id)} /> : null}
       {!loading && view === 'subjects' ? <SubjectBrowser analytics={analytics} subjects={subjects} topics={progress} sessions={plan} onViewTopic={(id) => void openTopic(id)} /> : null}
       {!loading && view === 'plan' ? <PlanDashboard availability={availability} onAvailability={saveWeeklyAvailability} onCannotDo={changeSessionStatus} onComplete={finishSession} onGenerate={buildPlan} onReviewTopic={(id) => void openTopic(id, true)} onViewTopic={(id) => void openTopic(id)} sessions={plan} studentMode={user.role === 'student'} /> : null}
       {!loading && view === 'progress' ? <ProgressDashboard editable={user.role === 'student'} onAssessment={saveAssessment} onConfidence={saveConfidence} onPractice={(id) => void openTopic(id)} topics={progress} /> : null}
       {!loading && view === 'analytics' && analytics ? <AnalyticsDashboard analytics={analytics} /> : null}
       {!loading && view === 'calendar' && analytics ? <CalendarDashboard analytics={analytics} availability={availability} editable={user.role === 'parent'} onException={saveException} onExam={saveExam} sessions={plan} subjects={subjects} /> : null}
-      {!loading && view === 'content' ? <><div className="subject-tabs" aria-label="Choose a subject">{subjects.filter((subject) => subject.active).map((subject) => <button aria-pressed={selectedSubjectId === subject.id} key={subject.id} onClick={() => setSelectedSubjectId(subject.id)} type="button">{subject.name}</button>)}</div><RevisionSubjectGuide examBoard={subjects.find((subject) => subject.id === selectedSubjectId)?.examBoard ?? 'exam-board'} guide={subjectGuide} loading={guideLoading} /><SubjectPreview onTopic={(id) => void openTopic(id)} subject={subjects.find((subject) => subject.id === selectedSubjectId)} /></> : null}
+      {!loading && view === 'content' ? <>
+        {nextLearningSession ? <section className="learn-next card" aria-labelledby="learn-next-heading"><div><p className="eyebrow">Planned next</p><h2 id="learn-next-heading">Continue with {nextLearningSession.topicName}</h2><p>{nextLearningSession.subjectName} · {nextLearningSession.plannedMinutes} minutes. Start here, or choose another subject below.</p></div><button onClick={() => nextLearningSession.topicId && void beginPlannedSession(nextLearningSession.id, nextLearningSession.topicId)} type="button">Start planned session</button></section> : null}
+        <label className="subject-picker">Choose a subject<select onChange={(event) => setSelectedSubjectId(event.target.value)} value={selectedSubjectId}>{activeSubjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
+        <div className="subject-tabs" aria-label="Choose a subject">{activeSubjects.map((subject) => <button aria-pressed={selectedSubjectId === subject.id} key={subject.id} onClick={() => setSelectedSubjectId(subject.id)} type="button">{subject.name}</button>)}</div>
+        <RevisionSubjectGuide examBoard={subjects.find((subject) => subject.id === selectedSubjectId)?.examBoard ?? 'exam-board'} guide={subjectGuide} loading={guideLoading} />
+        <SubjectPreview onTopic={(id) => void openTopic(id)} subject={subjects.find((subject) => subject.id === selectedSubjectId)} />
+      </> : null}
       {!loading && view === 'courses' ? <CourseSetup editable={user.role === 'parent'} onSave={saveCourse} subjects={subjects} /> : null}
       {!loading && view === 'privacy' ? <PrivacyNotice /> : null}
     </main>

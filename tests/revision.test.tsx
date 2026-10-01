@@ -14,7 +14,7 @@ const guide: SubjectRevisionGuide = {
 }
 
 const revision: TopicRevision = {
-  topicId: 'equations', summary: 'Solve equations.', learningObjectives: ['Solve a linear equation'], keyPoints: ['Balance both sides'], examTips: ['Show each step'], bespoke: true,
+  topicId: 'equations', summary: 'Solve equations.', learningObjectives: ['Solve a linear equation'], keyPoints: ['Balance both sides'], commonMistakes: ['Changing one side only'], examUse: ['Show each inverse operation'], examTips: ['Show each step'], bespoke: true,
   workedExample: { title: 'Linear equation', prompt: 'Solve x + 2 = 5.', steps: ['Subtract 2'], answer: 'x = 3' },
   practiceQuestions: [{ question: 'Solve 2x = 8.', hint: 'Divide by 2.', answer: 'x = 4', marks: 2 }], resources: [],
   testQuestions: [{ id: 'q1', question: 'Solve 2x = 8.', options: ['2', '4', '6'], correctOption: 1, explanation: 'Divide both sides by 2.', marks: 2 }],
@@ -47,6 +47,7 @@ describe('revision learning content', () => {
   it('shows exam-board detail and trusted practice links', () => {
     render(<RevisionSubjectGuide guide={guide} loading={false} />)
     expect(screen.getByText('What you will be tested on')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Exam format, mark objectives and official resources'))
     expect(screen.getByRole('link', { name: /Past papers/ })).toHaveAttribute('target', '_blank')
   })
 
@@ -75,17 +76,27 @@ describe('revision learning content', () => {
   it('teaches angles and polygons with varied maths practice', () => {
     const lesson = createFallbackLesson({ id: 'maths-geometry-angles', name: 'Angles and polygons', description: 'Angle facts.', component: 'All papers', subject_id: 'subject-mathematics', subject_name: 'Mathematics' })
     expect(lesson.bespoke).toBe(true)
-    expect(lesson.keyPoints).toHaveLength(7)
+    expect(lesson.keyPoints.length).toBeGreaterThanOrEqual(7)
     expect(lesson.keyPoints.join(' ')).toMatch(/alternate angles/i)
     expect(lesson.keyPoints.join(' ')).toMatch(/\(n − 2\)/)
     expect(lesson.practiceQuestions).toHaveLength(3)
+    expect(lesson.commonMistakes.length).toBeGreaterThanOrEqual(3)
+    expect(lesson.examUse.length).toBeGreaterThanOrEqual(3)
     expect(lesson.testQuestions).toHaveLength(3)
     expect(lesson.writtenQuestions[0]?.expectedLength).toMatch(/calculation/i)
   })
 
+  it('uses detailed subject notes without leaking another subject\'s mistake guidance', () => {
+    const lesson = createFallbackLesson({ id: 'science-p-atomic', name: 'Atomic structure', description: 'Atomic models; isotopes and nuclear radiation; half-life and contamination.', component: 'Physics Paper 1', subject_id: 'subject-combined-science', subject_name: 'Combined Science' })
+    expect(lesson.keyPoints.join(' ')).toMatch(/unstable nuclei decay randomly/i)
+    expect(lesson.keyPoints.join(' ')).toMatch(/irradiation exposes an object/i)
+    expect(lesson.commonMistakes.join(' ')).not.toMatch(/source, lines or statement/i)
+    expect(lesson.commonMistakes.join(' ')).toMatch(/scientific word/i)
+  })
+
   it('auto-marks a full-page test and records its weighted score', async () => {
     const onResult = vi.fn().mockResolvedValue(undefined)
-    render(<LearningSession onBack={() => undefined} onResult={onResult} onReviseNow={vi.fn().mockResolvedValue(undefined)} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
+    render(<LearningSession onBack={() => undefined} onResult={onResult} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
     fireEvent.click(screen.getByRole('button', { name: '3. Test yourself' }))
     fireEvent.click(screen.getByLabelText('4'))
     fireEvent.click(screen.getByRole('button', { name: 'Finish and mark check' }))
@@ -94,7 +105,7 @@ describe('revision learning content', () => {
   })
 
   it('offers a direct Gemini marking flow that does not need an API key', () => {
-    render(<LearningSession onBack={() => undefined} onResult={vi.fn().mockResolvedValue(undefined)} onReviseNow={vi.fn().mockResolvedValue(undefined)} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
+    render(<LearningSession onBack={() => undefined} onResult={vi.fn().mockResolvedValue(undefined)} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
     fireEvent.click(screen.getByRole('button', { name: '3. Test yourself' }))
     fireEvent.click(screen.getByRole('button', { name: /Mark with Gemini.*no API key/ }))
     expect(screen.getByRole('heading', { name: /Optional Gemini marking/ })).toBeInTheDocument()
@@ -105,7 +116,7 @@ describe('revision learning content', () => {
   })
 
   it('shows the phone QR option only inside written-answer practice', () => {
-    render(<LearningSession onBack={() => undefined} onResult={vi.fn().mockResolvedValue(undefined)} onReviseNow={vi.fn().mockResolvedValue(undefined)} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
+    render(<LearningSession onBack={() => undefined} onResult={vi.fn().mockResolvedValue(undefined)} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
     expect(screen.queryByRole('button', { name: 'Continue on phone' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '3. Test yourself' }))
     expect(screen.getByRole('button', { name: 'Continue on phone' })).toBeInTheDocument()
@@ -113,7 +124,7 @@ describe('revision learning content', () => {
 
   it('allows session review without recording another test score', async () => {
     const onResult = vi.fn().mockResolvedValue(undefined)
-    render(<LearningSession onBack={() => undefined} onResult={onResult} onReviseNow={vi.fn().mockResolvedValue(undefined)} recordResults={false} reviewMode revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: 80, confidence: 'confident', ragStatus: 'green', lastRevisedAt: null, totalSessions: 1, totalMinutes: 20, nextReviewAt: null, latestAssessment: 80, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
+    render(<LearningSession onBack={() => undefined} onResult={onResult} recordResults={false} reviewMode revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: 80, confidence: 'confident', ragStatus: 'green', lastRevisedAt: null, totalSessions: 1, totalMinutes: 20, nextReviewAt: null, latestAssessment: 80, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
     expect(screen.getByRole('status')).toHaveTextContent('Nothing in this session will replace or change your saved test scores')
     fireEvent.click(screen.getByRole('button', { name: '3. Test yourself' }))
     fireEvent.click(screen.getByLabelText('4'))

@@ -109,4 +109,11 @@ describe('initial migration', () => {
     expect(audit).toContain('marking_model')
     expect(audit).toContain('rubric_version')
   })
+
+  it('versions the cross-subject content learning standard without claiming teacher approval', () => {
+    const content = readFileSync('database/migrations/0025_content_learning_standard.sql', 'utf8')
+    expect(content).toContain("content_version = '2.0'")
+    expect(content).toContain("review_status = CASE WHEN review_status = 'subject_expert_checked'")
+    expect(content).toContain("'editorial_checked'")
+  })
 })

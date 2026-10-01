@@ -6,7 +6,7 @@ Last updated: 1 October 2026.
 
 ## Implementation status
 
-The code-level reliability, mobile daily-driver, guided configuration, planning, privacy, routing, export/recovery and accessibility-automation work in this plan has been implemented. The maintained checkbox record is in `APP-IMPROVEMENT-BACKLOG.md`; the current automated baseline is 82 unit/integration checks and eight desktop/mobile browser journeys.
+The code-level reliability, mobile daily-driver, guided configuration, planning, privacy, routing, export/recovery and accessibility-automation work in this plan has been implemented. Content standard 2.0 now supplies concise detailed notes, common mistakes, exam-use guidance and a practice ladder for every confirmed syllabus leaf. The maintained checkbox record is in `APP-IMPROVEMENT-BACKLOG.md`; the current automated baseline is 84 unit/integration checks and eight desktop/mobile browser journeys.
 
 The app is useful now as a personal planner, topic-practice and evidence tool, but Gate C is deliberately still open. It requires the Student's real final entries and dates, subject-teacher QA of content, deeper exam-question ladders, manual assistive-technology checks and ten school days of real Year 11 use. Those are evidence and human-review gates, not tasks that can be completed truthfully by changing code.
 

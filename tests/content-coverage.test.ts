@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { createFallbackLesson } from '../worker/services/revision'
+import { detailedTopicNotesFor } from '../worker/content/topic-notes'
 
 interface ParsedTopic {
   id: string
@@ -55,8 +56,15 @@ describe('reviewed practice coverage', () => {
       expect.soft(lesson.writtenQuestions.some((question) => question.canUpdateMastery), topic.id).toBe(true)
       expect.soft(lesson.practiceQuestions[0]?.question, topic.id).not.toMatch(/Which description most accurately|revision method best checks|important idea from/)
       expect.soft(lesson.learningObjectives.length, topic.id).toBeGreaterThanOrEqual(3)
-      expect.soft(lesson.keyPoints.length, topic.id).toBeGreaterThanOrEqual(4)
+      expect.soft(lesson.keyPoints.length, topic.id).toBeGreaterThanOrEqual(3)
+      expect.soft(detailedTopicNotesFor(topic.id).length, topic.id).toBeGreaterThanOrEqual(3)
+      expect.soft(lesson.commonMistakes.length, topic.id).toBeGreaterThanOrEqual(3)
+      expect.soft(lesson.examUse.length, topic.id).toBeGreaterThanOrEqual(3)
       expect.soft(lesson.workedExample.steps.length, topic.id).toBeGreaterThanOrEqual(4)
+      expect.soft(lesson.practiceQuestions.length, topic.id).toBeGreaterThanOrEqual(3)
+      expect.soft(lesson.practiceQuestions.some((question) => question.level === 'retrieval'), topic.id).toBe(true)
+      expect.soft(lesson.practiceQuestions.some((question) => question.level === 'challenge'), topic.id).toBe(true)
+      expect.soft(lesson.writtenQuestions.filter((question) => question.canUpdateMastery).length, topic.id).toBeGreaterThanOrEqual(1)
       if (['subject-geography', 'subject-business', 'subject-design-technology'].includes(topic.subjectId)) {
         expect.soft(lesson.practiceQuestions[0]?.answer.length, topic.id).toBeGreaterThanOrEqual(80)
       }

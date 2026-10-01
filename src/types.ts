@@ -165,9 +165,11 @@ export interface TopicRevision {
   summary: string
   learningObjectives: string[]
   keyPoints: string[]
+  commonMistakes: string[]
+  examUse: string[]
   examTips: string[]
   workedExample: { title: string; prompt: string; steps: string[]; answer: string }
-  practiceQuestions: Array<{ question: string; hint: string; answer: string; marks: number }>
+  practiceQuestions: Array<{ question: string; hint: string; answer: string; marks: number; level?: 'retrieval' | 'standard' | 'challenge'; canUpdateMastery?: boolean }>
   testQuestions: Array<{ id: string; question: string; options: string[]; correctOption: number; explanation: string; marks: number }>
   writtenQuestions: WrittenQuestion[]
   assessmentAvailable: boolean
@@ -196,6 +198,7 @@ export interface WrittenQuestion {
   exemplar: string
   exemplarAnnotations: Array<{ label: string; explanation: string }>
   canUpdateMastery: boolean
+  level?: 'retrieval' | 'standard' | 'challenge'
 }
 
 export interface WrittenMark {

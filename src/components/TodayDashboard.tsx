@@ -20,6 +20,13 @@ interface TodayDashboardProps {
 
 function sessionDate(value: string): string { return productDateKey(new Date(value)) }
 
+function studentStatus(status: TopicProgress['ragStatus'] | undefined): string {
+  if (status === 'red') return 'Needs work'
+  if (status === 'amber') return 'Developing'
+  if (status === 'green') return 'Secure'
+  return 'Not checked yet'
+}
+
 export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onStart, onQuickRevision, onViewTopic, onReviewTopic, onOpenWeek, editable = true, analytics }: TodayDashboardProps) {
   const today = productDateKey()
   const todaySessions = sessions.filter((session) => sessionDate(session.scheduledAt) === today)
@@ -31,7 +38,12 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onSta
   const assessed = topics.filter((topic) => topic.masteryScore !== null)
   const averageMastery = assessed.length ? Math.round(assessed.reduce((sum, topic) => sum + (topic.masteryScore ?? 0), 0) / assessed.length) : 0
   const weakTopics = useMemo(() => topics.filter((topic) => topic.ragStatus === 'red' || topic.ragStatus === 'amber').sort((a, b) => (a.masteryScore ?? 0) - (b.masteryScore ?? 0)).slice(0, 3), [topics])
-  const quickTopic = weakTopics[0] ?? topics.find((topic) => topic.nextReviewAt && topic.nextReviewAt.slice(0, 10) <= today) ?? topics.find((topic) => topic.ragStatus === 'grey')
+  const todayTopicId = todaySessions.find((session) => session.status === 'planned' && session.topicId)?.topicId
+  const quickTopic = topics.find((topic) => topic.topicId === todayTopicId)
+    ?? topics.find((topic) => topic.nextReviewAt && topic.nextReviewAt.slice(0, 10) <= today)
+    ?? weakTopics[0]
+    ?? topics.find((topic) => topic.ragStatus === 'grey')
+  const newStarter = assessed.length === 0 && completed.length === 0
 
   return (
     <section aria-labelledby="today-heading">
@@ -53,7 +65,7 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onSta
                   <div className="today-session__time"><strong>{formatProductTime(session.scheduledAt)}</strong><span>{session.plannedMinutes} min</span></div>
                   <div className="today-session__main">
                     <p>{session.subjectName} · {session.sessionType}</p><h3>{session.topicName}</h3>
-                    <span className={`rag-label rag--${topic?.ragStatus ?? 'grey'}`}>{topic?.ragStatus ?? (isTutor ? 'Tutor' : 'Not assessed')}</span>
+                    <span className={`rag-label rag--${topic?.ragStatus ?? 'grey'}`}>{isTutor ? 'Tutor' : studentStatus(topic?.ragStatus)}</span>
                     <p className="reason">Why this is here: {session.plannerReason}</p>
                     {(session.reviewItems ?? []).length ? <div className="review-agenda">
                       <strong>Memory review from earlier learning</strong>
@@ -67,9 +79,8 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onSta
                   {editable && session.status === 'planned' && !isTutor ? (
                     <div className="today-session__actions">
                       <button onClick={() => session.topicId && void onStart(session.id, session.topicId)} type="button">{session.startedAt ? 'Resume revision' : 'Start revision'}</button>
-                      <button onClick={() => setActiveSession(session)} type="button">Complete</button>
-                      <button className="secondary" onClick={() => session.topicId && onViewTopic(session.topicId)} type="button">Open / resume</button>
-                      <button className="text-button" onClick={() => setBlockedSession(session)} type="button">Cannot do</button>
+                      {session.startedAt ? <button onClick={() => setActiveSession(session)} type="button">Finish and log</button> : null}
+                      <details className="session-other-actions"><summary>Other options</summary><div><button className="secondary" onClick={() => setActiveSession(session)} type="button">Log work done elsewhere</button><button className="text-button" onClick={() => setBlockedSession(session)} type="button">Cannot do this session</button></div></details>
                     </div>
                   ) : <div className="today-session__actions"><span className="session-status">{session.status}</span>{session.topicId ? <button className="secondary" onClick={() => onReviewTopic(session.topicId!)} type="button">Review content</button> : null}</div>}
                 </article>
@@ -92,12 +103,12 @@ export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onSta
         </aside>
       </div>
 
-      <div className="dashboard-stats">
+      {newStarter ? <section className="starter-journey card" aria-labelledby="starter-heading"><p className="eyebrow">Your first week</p><h3 id="starter-heading">Build the plan one useful check at a time</h3><ol><li><strong>Start today’s first session.</strong><span>The app will save where you begin.</span></li><li><strong>Complete the short knowledge check.</strong><span>This gives the planner its first real evidence.</span></li><li><strong>Finish and record how it felt.</strong><span>Your next sessions will become more personal.</span></li></ol><p>You are not behind—the empty figures simply mean the app is still learning what you know.</p></section> : <div className="dashboard-stats">
         <article className="mini-stat"><strong>{assessed.length ? `${averageMastery}%` : '—'}</strong><span>{assessed.length ? 'current mastery estimate' : 'not enough evidence yet'}</span></article>
         <article className="mini-stat"><strong>{assessed.length}/{topics.length}</strong><span>topics checked</span></article>
         <article className="mini-stat"><strong>{analytics?.week.completedSessions ?? completed.length}/{analytics?.week.plannedSessions ?? weekSessions.length}</strong><span>sessions this week</span></article>
         <article className="mini-stat"><strong>{analytics?.week.completedMinutes ?? completed.reduce((sum, item) => sum + item.plannedMinutes, 0)}/{analytics?.week.plannedMinutes ?? weekSessions.reduce((sum, item) => sum + item.plannedMinutes, 0)}m</strong><span>minutes this week</span></article>
-      </div>
+      </div>}
 
       {activeSession ? <SessionCompletionDialog onClose={() => setActiveSession(null)} onComplete={onComplete} session={activeSession} /> : null}
       {blockedSession ? <CannotDoDialog onClose={() => setBlockedSession(null)} onSubmit={onCannotDo} session={blockedSession} /> : null}

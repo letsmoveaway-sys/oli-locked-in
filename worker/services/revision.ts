@@ -1,5 +1,6 @@
 import type { Env, SessionUser } from '../types'
 import { reviewedPracticeFor } from '../content/reviewed-practice'
+import { contentGuidanceFor } from '../content/content-guidance'
 
 export interface RevisionResource {
   id: string
@@ -28,6 +29,8 @@ export interface PracticeQuestion {
   hint: string
   answer: string
   marks: number
+  level?: 'retrieval' | 'standard' | 'challenge'
+  canUpdateMastery?: boolean
 }
 
 export interface AutoMarkQuestion {
@@ -50,6 +53,7 @@ export interface WrittenQuestion {
   exemplar: string
   exemplarAnnotations: Array<{ label: string; explanation: string }>
   canUpdateMastery: boolean
+  level?: 'retrieval' | 'standard' | 'challenge'
 }
 
 export interface TopicRevision {
@@ -57,6 +61,8 @@ export interface TopicRevision {
   summary: string
   learningObjectives: string[]
   keyPoints: string[]
+  commonMistakes: string[]
+  examUse: string[]
   examTips: string[]
   workedExample: { title: string; prompt: string; steps: string[]; answer: string }
   practiceQuestions: PracticeQuestion[]
@@ -321,7 +327,8 @@ function writtenQuestionsFor(topic: TopicRow, practiceQuestions: PracticeQuestio
     markingPoints: markingPointsFor(topic.subject_id),
     exemplar: practice.answer,
     exemplarAnnotations: exemplarAnnotationsFor(topic.subject_id),
-    canUpdateMastery,
+    canUpdateMastery: canUpdateMastery && practice.canUpdateMastery !== false,
+    level: practice.level,
   }))
 }
 
@@ -374,10 +381,11 @@ function curatedMathsLesson(topic: TopicRow): Omit<TopicRevision, 'resources'> |
 
 function completeRevision(
   topic: TopicRow,
-  lesson: Omit<TopicRevision, 'resources' | 'writtenQuestions' | 'assessmentAvailable' | 'contentProvenance' | 'aiMarkingAllowed'>,
+  lesson: Omit<TopicRevision, 'resources' | 'writtenQuestions' | 'assessmentAvailable' | 'contentProvenance' | 'aiMarkingAllowed' | 'commonMistakes' | 'examUse'>,
   canUpdateWrittenMastery: boolean,
   provenance?: Partial<TopicRevision['contentProvenance']>,
 ): Omit<TopicRevision, 'resources'> {
+  const guidance = contentGuidanceFor(topic)
   const objectives = [...lesson.learningObjectives]
   for (const objective of learningObjectives(topic)) {
     if (objectives.length >= 3) break
@@ -389,10 +397,28 @@ function completeRevision(
     if (steps.length >= 4) break
     steps.push(step)
   }
+  const coreKeyPoints = [...new Set([...guidance.coreNotes, ...(lesson.bespoke ? lesson.keyPoints : [])])].slice(0, 10)
+  const suppliedPractice = lesson.practiceQuestions.map((question, index) => ({
+    ...question,
+    level: question.level ?? (lesson.practiceQuestions.length >= 3
+      ? index === 0 ? 'retrieval' as const : index === lesson.practiceQuestions.length - 1 ? 'challenge' as const : 'standard' as const
+      : 'standard' as const),
+  }))
+  const support = supportingPractice(topic, coreKeyPoints, guidance.examUse)
+  const practiceQuestions = suppliedPractice.length >= 3
+    ? suppliedPractice
+    : suppliedPractice.length === 2
+      ? [support[0]!, ...suppliedPractice]
+      : suppliedPractice.length === 1
+        ? [support[0]!, support[1]!, suppliedPractice[0]!]
+        : support
   const normalized = {
     ...lesson,
     learningObjectives: objectives,
-    keyPoints: lesson.keyPoints.length >= 4 ? lesson.keyPoints : knowledgePoints(topic, lesson.keyPoints),
+    keyPoints: coreKeyPoints.length >= 3 ? coreKeyPoints : knowledgePoints(topic, coreKeyPoints),
+    commonMistakes: guidance.commonMistakes,
+    examUse: guidance.examUse,
+    practiceQuestions,
     workedExample: { ...lesson.workedExample, steps },
   }
   const writtenQuestions = writtenQuestionsFor(topic, normalized.practiceQuestions, canUpdateWrittenMastery)
@@ -402,14 +428,76 @@ function completeRevision(
     assessmentAvailable: lesson.testQuestions.length > 0 || writtenQuestions.some((question) => question.canUpdateMastery),
     aiMarkingAllowed: false,
     contentProvenance: {
-      version: provenance?.version ?? '2026.09',
+      version: provenance?.version ?? '2.0',
       author: provenance?.author ?? 'Original GCSE Revision app practice',
       reviewer: provenance?.reviewer ?? null,
       reviewStatus: provenance?.reviewStatus ?? (canUpdateWrittenMastery ? 'editorial_checked' : 'draft'),
-      reviewedAt: provenance?.reviewedAt ?? (canUpdateWrittenMastery ? '2026-09-30' : null),
+      reviewedAt: provenance?.reviewedAt ?? (canUpdateWrittenMastery ? '2026-10-01' : null),
       sourceUrl: provenance?.sourceUrl ?? topic.source_reference ?? null,
     },
   }
+}
+
+function supportingPractice(topic: TopicRow, keyPoints: string[], examUse: string[]): PracticeQuestion[] {
+  const recallAnswer = keyPoints.slice(0, 4).join(' ')
+  const challengePrompts: Record<string, { question: string; hint: string; answer: string }> = {
+    'subject-mathematics': {
+      question: `Create a short worked example for ${topic.name}, then identify the first decision a learner must make and one check on the final answer.`,
+      hint: 'Use different values from the worked example and show every mark-bearing step.',
+      answer: 'A useful example states the relevant rule or formula, shows a valid sequence of working, gives a final answer with suitable units or accuracy and checks it by estimation, substitution or the original context.',
+    },
+    'subject-english-language': {
+      question: `Plan one precise paragraph for ${topic.name}. Identify the evidence, method, inference and effect before writing it.`,
+      hint: 'Use a short quotation and make the inference specific to the wording and question focus.',
+      answer: 'A strong plan contains a direct interpretation, a short embedded quotation, close analysis of a word or structural choice, and an explanation of how that choice shapes meaning for the reader.',
+    },
+    'subject-english-literature': {
+      question: `Plan a second paragraph on ${topic.name} that offers a different but compatible interpretation.`,
+      hint: 'Choose a flexible quotation and connect the method to the writer\'s wider idea.',
+      answer: 'A strong plan advances the argument rather than repeating it, embeds a precise textual reference, analyses language, form or structure and integrates only context that deepens the interpretation.',
+    },
+    'subject-combined-science': {
+      question: `Turn one idea from ${topic.name} into a complete cause → mechanism → outcome explanation, then name one variable or unit that could be assessed.`,
+      hint: 'Do not jump from cause to outcome; state the scientific process in between.',
+      answer: 'The response should use precise scientific vocabulary, make every causal link explicit, and identify a relevant measurable quantity, variable or unit from the topic.',
+    },
+    'subject-history': {
+      question: `Plan one paragraph about ${topic.name} using a precise fact and an explained link to the command word.`,
+      hint: 'Select evidence from the correct period, then explain why it proves the point.',
+      answer: 'A strong plan makes a direct claim, supports it with precise and relevant knowledge, explains causation, consequence, change, similarity or significance as required, and returns to the question.',
+    },
+    'subject-geography': {
+      question: `Build one cause → process → effect chain for ${topic.name}, adding named or numerical evidence where the course requires it.`,
+      hint: 'Use because and therefore to make each link visible.',
+      answer: 'A strong chain accurately names the geographical process, explains how the cause produces the effect, and applies relevant place, fieldwork or resource evidence rather than adding an unrelated statistic.',
+    },
+    'subject-business': {
+      question: `Apply ${topic.name} to a small business with limited cash and develop the likely effect on one objective.`,
+      hint: 'Use the size and cash constraint throughout the chain, then state what the decision depends on.',
+      answer: 'A strong response applies the correct concept to the stated business, develops a chain to cost, revenue, profit, growth or another objective, and gives a conditional judgement based on the most important contextual factor.',
+    },
+    'subject-design-technology': {
+      question: `Use ${topic.name} to justify one design decision for a school product and specify a measurable test.`,
+      hint: 'Link the technical choice to a user need and include a realistic pass criterion.',
+      answer: 'A strong response links a material, process or design feature to the product function and user, identifies a trade-off and proposes a measurable test with conditions and a pass criterion.',
+    },
+  }
+  const challenge = challengePrompts[topic.subject_id] ?? {
+    question: `Plan an exam response that applies ${topic.name} to a new context.`,
+    hint: 'Select accurate knowledge, apply it and justify the conclusion.',
+    answer: examUse.join(' '),
+  }
+  return [
+    {
+      question: `Without notes, write four precise facts, rules or ideas you must know for ${topic.name}.`,
+      hint: 'Recall first; then compare your list with the core notes and correct anything vague.',
+      answer: recallAnswer,
+      marks: 4,
+      level: 'retrieval',
+      canUpdateMastery: false,
+    },
+    { ...challenge, marks: 6, level: 'challenge', canUpdateMastery: false },
+  ]
 }
 
 function knowledgePoints(topic: TopicRow, subjectMethod: string[]): string[] {
