@@ -76,6 +76,7 @@ export interface PlanSession {
   subjectName: string
   topicName: string
   scheduledAt: string
+  startedAt?: string | null
   plannedMinutes: number
   sessionType: string
   status: string
@@ -96,6 +97,7 @@ export interface WeeklyAvailability {
   weekday: number
   availableMinutes: number
   startTime: string | null
+  sessionMinutes?: number
 }
 
 export interface SessionCompletionInput {
@@ -120,6 +122,8 @@ export interface TopicDetail extends TopicProgress {
     markingSource: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'
     markingConfidence: 'low' | 'medium' | 'high' | null
     feedback: { summary?: string; nextStep?: string } | null
+    markingModel?: string | null
+    rubricVersion?: string | null
     completedAt: string
   }>
   sessions: Array<{
@@ -168,8 +172,17 @@ export interface TopicRevision {
   writtenQuestions: WrittenQuestion[]
   assessmentAvailable: boolean
   automaticMarkingAvailable?: boolean
+  aiMarkingAllowed: boolean
   resources: RevisionResource[]
   bespoke: boolean
+  contentProvenance: {
+    version: string
+    author: string
+    reviewer: string | null
+    reviewStatus: 'draft' | 'editorial_checked' | 'subject_expert_checked'
+    reviewedAt: string | null
+    sourceUrl: string | null
+  }
 }
 
 export interface WrittenQuestion {
@@ -194,11 +207,16 @@ export interface WrittenMark {
   strengths: Array<{ point: string; evidence: string }>
   improvements: string[]
   nextStep: string
+  evidenceToken?: string
+  modelVersion?: string
+  rubricVersion?: string
 }
 
 export interface Analytics {
   generatedAt: string
-  onTrack: 'on_track' | 'slightly_behind' | 'needs_attention'
+  aiMarkingEnabled: boolean
+  integrity: { ok: boolean; xpMatchesEvents: boolean; stalledCompletions: number; masteryMismatches: number }
+  onTrack: 'not_enough_evidence' | 'on_track' | 'slightly_behind' | 'needs_attention'
   overall: {
     coverage: number
     mastery: number | null
@@ -215,7 +233,11 @@ export interface Analytics {
   subjectBurndown: Record<string, Array<{ date: string; idealRemaining: number; actualRemaining: number }>>
   weakTopics: Array<{ topicId: string; topicName: string; subjectName: string; mastery: number | null; ragStatus: RagStatus; workloadRemaining: number }>
   nextSevenDays: Array<{ id: string; subjectName: string; topicName: string; scheduledAt: string; minutes: number; status: string }>
-  exams: Array<{ subjectName: string; component: string; examDatetime: string; confirmed: boolean }>
+  exams: Array<{
+    id: string; subjectId: string; subjectName: string; component: string; examDatetime: string
+    durationMinutes: number | null; examBoard: string; confirmed: boolean; source: string | null
+    lastVerifiedAt: string | null; eventKind: 'final' | 'mock' | 'school_assessment'
+  }>
   exceptions: Array<{ startDatetime: string; endDatetime: string; reason: string; availableMinutes: number; protectsStreak: boolean }>
   gamification: {
     xp: number; level: number; levelProgress: number; weeklyGoalMinutes: number; weeklyCompletedMinutes: number; streak: number

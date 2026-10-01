@@ -13,6 +13,7 @@ export async function resetPocProgress(user: SessionUser, env: Env): Promise<boo
     env.DB.prepare('DELETE FROM xp_events WHERE student_id = ?').bind(student.user_id),
     env.DB.prepare('DELETE FROM revision_sessions WHERE student_id = ?').bind(student.user_id),
     env.DB.prepare('DELETE FROM topic_progress WHERE student_id = ?').bind(student.user_id),
+    env.DB.prepare('UPDATE student_profiles SET xp = 0, level = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').bind(student.user_id),
   ])
 
   const context = await loadPlannerContext(user, env)

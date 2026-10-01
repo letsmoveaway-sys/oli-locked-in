@@ -38,7 +38,9 @@ export function SubjectPreview({ subject, onTopic }: { subject: CourseSubject | 
           <div><p className="eyebrow">Syllabus map</p><h2>Course content</h2></div>
           {revisionGroups > 0 ? <span className="tag tag--ready">{revisionGroups} revision groups</span> : null}
         </div>
-        {!subject.configurationComplete ? <p className="tbc-notice">The course map will be added when the exam board and specification are confirmed.</p> : null}
+        {!subject.configurationComplete ? <p className="tbc-notice">{subject.examBoard === 'TBC'
+          ? 'The course map will be added when the exam board and specification are confirmed.'
+          : 'The exam board map is available. Items marked Choice TBC stay out of the revision plan until the school confirms the taught options and case studies.'}</p> : null}
         <div className="topic-list">
           {subject.topics.map((topic) => (
             <details key={topic.id}>

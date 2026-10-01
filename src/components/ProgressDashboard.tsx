@@ -1,11 +1,14 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import type { Confidence, TopicProgress } from '../types'
+import { productDateKey } from '../utils/dateTime'
+import { AccessibleDialog } from './AccessibleDialog'
 
 interface ProgressDashboardProps {
   topics: TopicProgress[]
   editable: boolean
   onConfidence: (topicId: string, confidence: Confidence) => Promise<void>
   onAssessment: (topicId: string, score: number, maximumScore: number) => Promise<void>
+  onPractice: (topicId: string) => void
 }
 
 const confidenceOptions: Array<{ value: Confidence; label: string }> = [
@@ -22,14 +25,25 @@ const ragLabels = {
   green: 'Green — Secure',
 }
 
-export function ProgressDashboard({ topics, editable, onConfidence, onAssessment }: ProgressDashboardProps) {
+export function ProgressDashboard({ topics, editable, onConfidence, onAssessment, onPractice }: ProgressDashboardProps) {
   const subjects = useMemo(() => [...new Set(topics.map((topic) => topic.subjectName))], [topics])
   const [subject, setSubject] = useState('All subjects')
+  const [focus, setFocus] = useState('Priority')
+  const [search, setSearch] = useState('')
   const [assessmentTopic, setAssessmentTopic] = useState<TopicProgress | null>(null)
   const [score, setScore] = useState('')
   const [maximumScore, setMaximumScore] = useState('100')
   const [busyTopic, setBusyTopic] = useState('')
-  const shown = subject === 'All subjects' ? topics : topics.filter((topic) => topic.subjectName === subject)
+  const today = productDateKey()
+  const shown = topics
+    .filter((topic) => subject === 'All subjects' || topic.subjectName === subject)
+    .filter((topic) => !search.trim() || `${topic.topicName} ${topic.subjectName} ${topic.component}`.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter((topic) => focus === 'All topics' ||
+      (focus === 'Priority' && (topic.ragStatus === 'red' || topic.ragStatus === 'amber' || Boolean(topic.nextReviewAt && topic.nextReviewAt.slice(0, 10) <= today))) ||
+      (focus === 'Due now' && Boolean(topic.nextReviewAt && topic.nextReviewAt.slice(0, 10) <= today)) ||
+      (focus === 'Not checked' && topic.ragStatus === 'grey') ||
+      (focus === 'Secure' && topic.ragStatus === 'green'))
+    .sort((left, right) => (left.masteryScore ?? -1) - (right.masteryScore ?? -1))
   const counts = topics.reduce((result, topic) => ({ ...result, [topic.ragStatus]: result[topic.ragStatus] + 1 }), { grey: 0, red: 0, amber: 0, green: 0 })
 
   async function chooseConfidence(topicId: string, confidence: Confidence) {
@@ -51,13 +65,13 @@ export function ProgressDashboard({ topics, editable, onConfidence, onAssessment
   return (
     <section aria-labelledby="progress-heading">
       <div className="section-heading">
-        <div><p className="eyebrow">Phase 3 · Evidence</p><h2 id="progress-heading">Topic progress</h2></div>
-        <label className="filter-label">Subject
-          <select onChange={(event) => setSubject(event.target.value)} value={subject}>
-            <option>All subjects</option>
-            {subjects.map((name) => <option key={name}>{name}</option>)}
-          </select>
-        </label>
+        <div><p className="eyebrow">What to work on next</p><h2 id="progress-heading">Your topic progress</h2></div>
+      </div>
+
+      <div className="progress-filters card">
+        <label>Find a topic<input onChange={(event) => setSearch(event.target.value)} placeholder="Try algebra or cell biology" type="search" value={search} /></label>
+        <label>Show<select onChange={(event) => setFocus(event.target.value)} value={focus}><option>Priority</option><option>Due now</option><option>Not checked</option><option>Secure</option><option>All topics</option></select></label>
+        <label>Subject<select onChange={(event) => setSubject(event.target.value)} value={subject}><option>All subjects</option>{subjects.map((name) => <option key={name}>{name}</option>)}</select></label>
       </div>
 
       <div className="rag-summary" aria-label="RAG summary">
@@ -72,7 +86,7 @@ export function ProgressDashboard({ topics, editable, onConfidence, onAssessment
           <article className="progress-card card" key={topic.topicId}>
             <div className="progress-card__heading">
               <div><p>{topic.subjectName} · {topic.component}</p><h3>{topic.topicName}</h3></div>
-              <div className={`mastery-score rag--${topic.ragStatus}`}><strong>{topic.masteryScore ?? '—'}</strong><span>{topic.masteryScore === null ? 'No score' : 'Mastery'}</span></div>
+              <div className={`mastery-score rag--${topic.ragStatus}`}><strong>{topic.masteryScore ?? '—'}{topic.masteryScore !== null ? '%' : ''}</strong><span>{topic.masteryScore === null ? 'Not checked' : 'Evidence estimate'}</span></div>
             </div>
             <p className="topic-description">{topic.description}</p>
             <p className={`rag-label rag--${topic.ragStatus}`}>{ragLabels[topic.ragStatus]}</p>
@@ -92,18 +106,19 @@ export function ProgressDashboard({ topics, editable, onConfidence, onAssessment
                     ))}
                   </div>
                 </fieldset>
-                <button className="secondary assessment-button" onClick={() => setAssessmentTopic(topic)} type="button">Add result</button>
+                <div className="progress-card__buttons"><button onClick={() => onPractice(topic.topicId)} type="button">Practise this topic</button><button className="secondary assessment-button" onClick={() => setAssessmentTopic(topic)} type="button">Add a result</button></div>
               </div>
             ) : null}
           </article>
         ))}
+        {!shown.length ? <div className="card empty-plan"><h3>No topics match</h3><p>Try “All topics” or clear the search. If Priority is empty, that is good news: nothing currently needs urgent attention.</p></div> : null}
       </div>
 
       {assessmentTopic ? (
-        <div className="modal-backdrop" role="presentation">
-          <form className="assessment-modal card" onSubmit={submitAssessment}>
+        <AccessibleDialog busy={busyTopic === assessmentTopic.topicId} className="assessment-modal card" onClose={() => setAssessmentTopic(null)} titleId="assessment-heading">
+          <form onSubmit={submitAssessment}>
             <p className="eyebrow">Record evidence</p>
-            <h2>{assessmentTopic.topicName}</h2>
+            <h2 id="assessment-heading">{assessmentTopic.topicName}</h2>
             <div className="score-fields">
               <label>Score<input autoFocus min="0" onChange={(event) => setScore(event.target.value)} required type="number" value={score} /></label>
               <span>out of</span>
@@ -114,7 +129,7 @@ export function ProgressDashboard({ topics, editable, onConfidence, onAssessment
               <button disabled={busyTopic === assessmentTopic.topicId} type="submit">Save result</button>
             </div>
           </form>
-        </div>
+        </AccessibleDialog>
       ) : null}
     </section>
   )

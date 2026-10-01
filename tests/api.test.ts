@@ -113,6 +113,25 @@ describe('API role enforcement', () => {
     expect(unconfirmedResponse.status).toBe(400)
   })
 
+  it('restricts calendar, export and AI controls to the Parent account', async () => {
+    const studentToken = await createSessionToken(
+      { id: 'student-1', username: 'student', displayName: 'Student', role: 'student' },
+      env.SESSION_SECRET,
+    )
+    const headers = { Cookie: `gcse_session=${studentToken}`, Origin: 'https://example.test', 'Content-Type': 'application/json' }
+    const requests = [
+      new Request('https://example.test/api/availability/exceptions', { method: 'POST', headers, body: '{}' }),
+      new Request('https://example.test/api/parent/exams', { method: 'POST', headers, body: '{}' }),
+      new Request('https://example.test/api/parent/ai-marking', { method: 'PUT', headers, body: JSON.stringify({ enabled: true }) }),
+      new Request('https://example.test/api/parent/export', { headers: { Cookie: `gcse_session=${studentToken}` } }),
+    ]
+    for (const request of requests) {
+      const response = await handleApi(request, env)
+      expect(response.status).toBe(403)
+      await expect(response.json()).resolves.toMatchObject({ error: { code: 'FORBIDDEN' } })
+    }
+  })
+
   it('fails safely when written-answer marking is not configured', async () => {
     const token = await createSessionToken(
       { id: 'student-1', username: 'student', displayName: 'Student', role: 'student' },

@@ -21,7 +21,7 @@ export function SubjectBrowser({ subjects, topics, sessions, onViewTopic, analyt
 
   return (
     <section aria-labelledby="subjects-heading">
-      <div className="section-heading"><div><p className="eyebrow">Phase 5 · Subject overview</p><h2 id="subjects-heading">Your subjects</h2></div></div>
+      <div className="section-heading"><div><p className="eyebrow">Your course at a glance</p><h2 id="subjects-heading">Your subjects</h2></div></div>
       <div className="subject-overviews">
         {summaries.map(({ subject, topics: subjectTopics, assessed, mastery, next }) => (
           <details className="subject-overview card" key={subject.id}>
@@ -30,7 +30,7 @@ export function SubjectBrowser({ subjects, topics, sessions, onViewTopic, analyt
               <div className="subject-overview__metrics"><strong>{mastery ?? '—'}{mastery === null ? '' : '%'}</strong><span>mastery</span><small>{assessed.length}/{subjectTopics.length} assessed</small></div>
             </summary>
             <div className="coverage-bar" aria-label={`${assessed.length} of ${subjectTopics.length} topics assessed`}><span style={{ width: `${subjectTopics.length ? (assessed.length / subjectTopics.length) * 100 : 0}%` }} /></div>
-            <p className="next-activity"><strong>{analytics?.subjects.find((item) => item.subjectId === subject.id)?.workloadRemaining ?? '—'} workload units remaining.</strong> {next ? <>Next: <strong>{next.topicName}</strong> · {new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(next.scheduledAt))}</> : 'No upcoming activity currently scheduled.'}</p>
+            <p className="next-activity"><strong>{analytics?.subjects.find((item) => item.subjectId === subject.id)?.workloadRemaining ?? '—'} priority points still to work through.</strong> This combines how much of the course is left, how secure you are and how close the exam is. {next ? <>Next: <strong>{next.topicName}</strong> · {new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(next.scheduledAt))}</> : 'No upcoming activity currently scheduled.'}</p>
             <div className="subject-topic-list">
               {subjectTopics.map((topic) => (
                 <button key={topic.topicId} onClick={() => onViewTopic(topic.topicId)} type="button">

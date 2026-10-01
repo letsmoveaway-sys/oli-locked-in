@@ -3,10 +3,11 @@ import type { SessionUser } from '../types'
 import { signIn } from '../services/api'
 
 interface SignInProps {
+  message?: string
   onSignedIn: (user: SessionUser) => void
 }
 
-export function SignIn({ onSignedIn }: SignInProps) {
+export function SignIn({ message, onSignedIn }: SignInProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -41,6 +42,7 @@ export function SignIn({ onSignedIn }: SignInProps) {
       <section className="card sign-in-card" aria-labelledby="sign-in-heading">
         <h2 id="sign-in-heading">Sign in</h2>
         <p className="muted">Use your private Student or Parent account.</p>
+        {message ? <p className="assessment-hint" role="status">{message}</p> : null}
         <form onSubmit={handleSubmit}>
           <label htmlFor="username">Username or email</label>
           <input

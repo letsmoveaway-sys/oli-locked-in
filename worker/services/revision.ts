@@ -64,8 +64,17 @@ export interface TopicRevision {
   writtenQuestions: WrittenQuestion[]
   assessmentAvailable: boolean
   automaticMarkingAvailable?: boolean
+  aiMarkingAllowed: boolean
   resources: RevisionResource[]
   bespoke: boolean
+  contentProvenance: {
+    version: string
+    author: string
+    reviewer: string | null
+    reviewStatus: 'draft' | 'editorial_checked' | 'subject_expert_checked'
+    reviewedAt: string | null
+    sourceUrl: string | null
+  }
 }
 
 interface GuideRow {
@@ -107,6 +116,11 @@ interface LessonRow {
   exam_tips_json: string
   worked_example_json: string
   practice_questions_json: string
+  content_version: string
+  author: string
+  reviewer: string | null
+  review_status: 'draft' | 'editorial_checked' | 'subject_expert_checked'
+  reviewed_at: string | null
 }
 
 function parseJson<T>(value: string, fallback: T): T {
@@ -358,13 +372,65 @@ function curatedMathsLesson(topic: TopicRow): Omit<TopicRevision, 'resources'> |
   }, true)
 }
 
-function completeRevision(topic: TopicRow, lesson: Omit<TopicRevision, 'resources' | 'writtenQuestions' | 'assessmentAvailable'>, canUpdateWrittenMastery: boolean): Omit<TopicRevision, 'resources'> {
-  const writtenQuestions = writtenQuestionsFor(topic, lesson.practiceQuestions, canUpdateWrittenMastery)
-  return {
+function completeRevision(
+  topic: TopicRow,
+  lesson: Omit<TopicRevision, 'resources' | 'writtenQuestions' | 'assessmentAvailable' | 'contentProvenance' | 'aiMarkingAllowed'>,
+  canUpdateWrittenMastery: boolean,
+  provenance?: Partial<TopicRevision['contentProvenance']>,
+): Omit<TopicRevision, 'resources'> {
+  const objectives = [...lesson.learningObjectives]
+  for (const objective of learningObjectives(topic)) {
+    if (objectives.length >= 3) break
+    if (!objectives.includes(objective)) objectives.push(objective)
+  }
+  const steps = [...lesson.workedExample.steps]
+  const checkingSteps = ['Match each step to the command word and available marks.', 'Check the final answer against the evidence and question.']
+  for (const step of checkingSteps) {
+    if (steps.length >= 4) break
+    steps.push(step)
+  }
+  const normalized = {
     ...lesson,
+    learningObjectives: objectives,
+    keyPoints: lesson.keyPoints.length >= 4 ? lesson.keyPoints : knowledgePoints(topic, lesson.keyPoints),
+    workedExample: { ...lesson.workedExample, steps },
+  }
+  const writtenQuestions = writtenQuestionsFor(topic, normalized.practiceQuestions, canUpdateWrittenMastery)
+  return {
+    ...normalized,
     writtenQuestions,
     assessmentAvailable: lesson.testQuestions.length > 0 || writtenQuestions.some((question) => question.canUpdateMastery),
+    aiMarkingAllowed: false,
+    contentProvenance: {
+      version: provenance?.version ?? '2026.09',
+      author: provenance?.author ?? 'Original GCSE Revision app practice',
+      reviewer: provenance?.reviewer ?? null,
+      reviewStatus: provenance?.reviewStatus ?? (canUpdateWrittenMastery ? 'editorial_checked' : 'draft'),
+      reviewedAt: provenance?.reviewedAt ?? (canUpdateWrittenMastery ? '2026-09-30' : null),
+      sourceUrl: provenance?.sourceUrl ?? topic.source_reference ?? null,
+    },
   }
+}
+
+function knowledgePoints(topic: TopicRow, subjectMethod: string[]): string[] {
+  const content = topic.description
+    .split(/;|\.(?:\s|$)/)
+    .map((point) => point.trim())
+    .filter((point) => point.length > 2)
+    .slice(0, 6)
+  return [...new Set([...content, ...subjectMethod])]
+}
+
+function learningObjectives(topic: TopicRow): string[] {
+  const content = topic.description
+    .split(/;|\.(?:\s|$)/)
+    .map((point) => point.trim())
+    .filter((point) => point.length > 2)
+  return [
+    `Recall and explain the required knowledge for ${topic.name}`,
+    content.length > 1 ? `Connect ${content[0]} with ${content[1]}` : `Apply the key ideas in ${topic.name} to an unfamiliar context`,
+    `Complete and check an exam-style ${topic.name} response`,
+  ]
 }
 
 const poetryComparisons: Record<string, { other: string; focus: string; answer: string }> = {
@@ -458,13 +524,13 @@ export function createFallbackLesson(topic: TopicRow): Omit<TopicRevision, 'reso
   const base = {
     topicId: topic.id,
     summary: topic.description,
-    learningObjectives: [`Explain the key ideas in ${topic.name}`, `Apply ${topic.name} to an exam-style task`, 'Check an answer against the command word and available marks'],
+    learningObjectives: learningObjectives(topic),
     examTips: ['Underline the command word and key data', 'Make one relevant point for each available mark', 'Check the answer is specific to the scenario or evidence given'],
     bespoke: false,
     testQuestions: createAutoTest(topic.id),
   }
   if (topic.subject_id === 'subject-mathematics') return completeRevision(topic, { ...base,
-    keyPoints: ['Write the method clearly, one step at a time', 'Keep exact values until the final step', 'Estimate or substitute back to check the result'],
+    keyPoints: knowledgePoints(topic, ['Write the method clearly, one step at a time', 'Keep exact values until the final step', 'Estimate or substitute back to check the result']),
     workedExample: { title: 'A reliable exam method', prompt: `How should you approach an unfamiliar ${topic.name} question?`, steps: ['List the values and facts given', 'Choose a relevant rule, formula or representation', 'Show each substitution and calculation', 'Check units, accuracy and whether the result is sensible'], answer: 'A complete answer shows a valid method as well as the final result.' },
     practiceQuestions: reviewedPractice ? [reviewedPractice] : [
       { question: `Write down two rules, formulae or representations used in ${topic.name}, and explain when each is useful.`, hint: 'Use your notes or the linked specification to identify the exact knowledge.', answer: 'Award one mark for each correct rule or representation and one for each accurate explanation.', marks: 4 },
@@ -472,12 +538,12 @@ export function createFallbackLesson(topic: TopicRow): Omit<TopicRevision, 'reso
     ],
   }, Boolean(reviewedPractice))
   if (topic.subject_id === 'subject-english-language') return completeRevision(topic, { ...base,
-    keyPoints: ['Name a precise method, select a short quotation and explain its effect', 'Link interpretation to purpose, audience and form', 'Develop comparisons through both ideas and methods'],
+    keyPoints: knowledgePoints(topic, ['Name a precise method, select a short quotation and explain its effect', 'Link interpretation to purpose, audience and form', 'Develop comparisons through both ideas and methods']),
     workedExample: { title: 'Language analysis', prompt: 'Analyse: “The street held its breath as the last light disappeared.”', steps: ['Select “held its breath”', 'Identify personification', 'Infer tense anticipation and unnatural stillness', 'Link the effect to the disappearing light and possible danger'], answer: 'The personification “held its breath” makes the street seem tense and watchful, creating suspense as darkness arrives.' },
     practiceQuestions: reviewedPractice ? [reviewedPractice] : [{ question: 'How does the writer use language in “Rain hammered the empty playground, swallowing every sound”?', hint: 'Analyse the verbs and their effects, not just their labels.', answer: 'A developed answer may explain that violent “hammered” makes the weather seem aggressive, while “swallowing” personifies it as consuming the setting and intensifies isolation.', marks: 4 }],
   }, Boolean(reviewedPractice))
   if (topic.subject_id === 'subject-combined-science') return completeRevision(topic, { ...base,
-    keyPoints: ['Use precise scientific vocabulary', 'For calculations, state the equation, substitute, calculate and include units', 'For practicals, identify variables, controls, measurements and improvements'],
+    keyPoints: knowledgePoints(topic, ['Use precise scientific vocabulary', 'For calculations, state the equation, substitute, calculate and include units', 'For practicals, identify variables, controls, measurements and improvements']),
     workedExample: { title: 'Explain using a scientific chain', prompt: `How do you build a strong explanation about ${topic.name}?`, steps: ['State the relevant scientific fact', 'Use because to give the mechanism', 'Use therefore to connect it to the outcome', 'Check each link is scientifically accurate'], answer: 'A strong explanation connects cause, scientific mechanism and observed result.' },
     practiceQuestions: reviewedPractice ? [reviewedPractice] : [{ question: `Describe one investigation relevant to ${topic.name}. Identify the independent variable, dependent variable and two controls.`, hint: 'Choose a required practical or classroom investigation from this topic.', answer: 'Award one mark for a workable method and one each for a correct independent variable, dependent variable and two valid control variables.', marks: 5 }],
   }, Boolean(reviewedPractice))
@@ -489,7 +555,7 @@ export function createFallbackLesson(topic: TopicRow): Omit<TopicRevision, 'reso
     'subject-design-technology': { points: ['Connect design choices to measurable user needs', 'Justify material and process decisions', 'Evaluate with testing evidence and wider impacts'], question: `Propose and justify one design decision related to ${topic.name} for a reusable school product.`, hint: 'Name the user need, chosen feature and measurable test.', answer: 'A strong answer identifies a suitable feature or material, links it to the school user and gives a valid measurable test or trade-off.' },
   }
   const prompt = subjectPrompts[topic.subject_id] ?? { points: ['Recall accurate subject knowledge', 'Apply it to the question', 'Justify the conclusion with evidence'], question: `Explain one important idea from ${topic.name}.`, hint: 'Use a definition, example and consequence.', answer: 'Check for accurate knowledge, an applied example and a developed explanation.' }
-  return completeRevision(topic, { ...base, keyPoints: prompt.points, workedExample: { title: 'Build a developed response', prompt: `How should you answer a longer question on ${topic.name}?`, steps: ['Make a direct point', 'Add precise supporting knowledge or evidence', 'Explain why the evidence matters', 'Return to the wording of the question'], answer: 'A developed response combines accurate knowledge, application and explicit reasoning.' }, practiceQuestions: reviewedPractice ? [reviewedPractice] : [{ question: prompt.question, hint: prompt.hint, answer: prompt.answer, marks: prompt.marks ?? 4 }] }, Boolean(reviewedPractice))
+  return completeRevision(topic, { ...base, keyPoints: knowledgePoints(topic, prompt.points), workedExample: { title: 'Build a developed response', prompt: `How should you answer a longer question on ${topic.name}?`, steps: ['Make a direct point', 'Add precise supporting knowledge or evidence', 'Explain why the evidence matters', 'Return to the wording of the question'], answer: 'A developed response combines accurate knowledge, application and explicit reasoning.' }, practiceQuestions: reviewedPractice ? [reviewedPractice] : [{ question: prompt.question, hint: prompt.hint, answer: prompt.answer, marks: prompt.marks ?? 4 }] }, Boolean(reviewedPractice))
 }
 
 export async function getTopicRevision(user: SessionUser, topicId: string, env: Env): Promise<TopicRevision | null> {
@@ -500,14 +566,30 @@ export async function getTopicRevision(user: SessionUser, topicId: string, env: 
      FROM topics t JOIN subjects s ON s.id = t.subject_id
      JOIN student_subjects ss ON ss.subject_id = t.subject_id
      WHERE t.id = ? AND t.active = 1 AND ss.student_id = ? AND ss.active = 1
-       AND t.applicability = 'common' AND (t.tier = 'both' OR t.tier = ss.tier)
+       AND (t.applicability = 'common'
+         OR (t.subject_id = 'subject-geography' AND (
+           t.id = json_extract(ss.options_json, '$.livingWorldOption')
+           OR t.id = json_extract(ss.options_json, '$.resourceOption')
+           OR instr(COALESCE(json_extract(ss.options_json, '$.ukLandscapeOptions'), ''), t.id) > 0
+         ))
+         OR (t.subject_id = 'subject-design-technology'
+           AND COALESCE(json_extract(ss.options_json, '$.specialistMaterial'), 'TBC') <> 'TBC'))
+       AND (t.tier = 'both' OR t.tier = ss.tier)
        AND NOT EXISTS (SELECT 1 FROM topics child WHERE child.parent_topic_id = t.id AND child.active = 1)`,
   ).bind(topicId, studentId).first<TopicRow>()
   if (!topic) return null
   const lesson = await env.DB.prepare(
     `SELECT summary, learning_objectives_json, key_points_json, exam_tips_json,
-            worked_example_json, practice_questions_json FROM topic_lessons WHERE topic_id = ?`,
+            worked_example_json, practice_questions_json, content_version, author, reviewer,
+            review_status, reviewed_at FROM topic_lessons WHERE topic_id = ?`,
   ).bind(topicId).first<LessonRow>()
+  const storedPractice = lesson ? parseJson<PracticeQuestion[]>(lesson.practice_questions_json, []) : []
+  const reviewedPractice = topic.subject_id === 'subject-english-literature'
+    ? englishLiteraturePractice(topic)
+    : reviewedPracticeFor(topic.id)
+  const practiceQuestions = reviewedPractice && !storedPractice.some((question) => question.question === reviewedPractice.question)
+    ? [...storedPractice, reviewedPractice]
+    : storedPractice
   const content = lesson ? completeRevision(topic, {
     topicId,
     summary: lesson.summary,
@@ -515,13 +597,23 @@ export async function getTopicRevision(user: SessionUser, topicId: string, env: 
     keyPoints: parseJson<string[]>(lesson.key_points_json, []),
     examTips: parseJson<string[]>(lesson.exam_tips_json, []),
     workedExample: parseJson(lesson.worked_example_json, { title: '', prompt: '', steps: [], answer: '' }),
-    practiceQuestions: parseJson<PracticeQuestion[]>(lesson.practice_questions_json, []),
+    practiceQuestions,
     testQuestions: createAutoTest(topic.id),
     bespoke: true,
-  }, true) : createFallbackLesson(topic)
+  }, true, {
+    version: lesson.content_version,
+    author: lesson.author,
+    reviewer: lesson.reviewer,
+    reviewStatus: lesson.review_status,
+    reviewedAt: lesson.reviewed_at,
+    sourceUrl: topic.source_reference ?? null,
+  }) : createFallbackLesson(topic)
   const resources = await resourcesFor(topic.subject_id, topicId, env)
   if (topic.source_reference && !resources.some((resource) => resource.url === topic.source_reference)) resources.push({ id: `official-${topic.id}`, title: `${topic.name}: official specification content`, provider: topic.exam_board ?? 'Exam board', resourceType: 'specification', description: 'The official course specification for this topic.', url: topic.source_reference, freeAccess: true })
   const bitesize = bitesizeResourceFor(topic)
   if (bitesize) resources.push(bitesize)
-  return { ...content, automaticMarkingAvailable: Boolean(env.GEMINI_API_KEY), resources }
+  const aiPreference = await env.DB.prepare('SELECT ai_marking_enabled FROM student_profiles WHERE user_id = ?')
+    .bind(studentId).first<{ ai_marking_enabled: number }>()
+  const aiMarkingAllowed = aiPreference?.ai_marking_enabled === 1
+  return { ...content, aiMarkingAllowed, automaticMarkingAvailable: aiMarkingAllowed && Boolean(env.GEMINI_API_KEY), resources }
 }

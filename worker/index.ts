@@ -14,6 +14,7 @@ function withSecurityHeaders(response: Response, production: boolean): Response 
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const requestId = crypto.randomUUID()
     try {
       const url = new URL(request.url)
       if (env.ENVIRONMENT === 'production' && url.protocol === 'http:') {
@@ -24,13 +25,20 @@ export default {
       const response = url.pathname.startsWith('/api/')
         ? await handleApi(request, env)
         : await env.ASSETS.fetch(request)
-      return withSecurityHeaders(response, env.ENVIRONMENT === 'production')
+      const secured = withSecurityHeaders(response, env.ENVIRONMENT === 'production')
+      secured.headers.set('X-Request-ID', requestId)
+      return secured
     } catch (error) {
-      console.error('Unhandled API error', error instanceof Error ? error.message : 'Unknown error')
-      return withSecurityHeaders(Response.json(
+      console.error(JSON.stringify({
+        event: 'unhandled_request_error', requestId, method: request.method,
+        path: new URL(request.url).pathname, error: error instanceof Error ? error.name : 'UnknownError',
+      }))
+      const secured = withSecurityHeaders(Response.json(
         { error: { code: 'INTERNAL_ERROR', message: 'The service could not complete the request.' } },
         { status: 500, headers: { 'Cache-Control': 'no-store' } },
       ), env.ENVIRONMENT === 'production')
+      secured.headers.set('X-Request-ID', requestId)
+      return secured
     }
   },
 } satisfies ExportedHandler<Env>

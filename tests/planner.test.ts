@@ -195,6 +195,21 @@ describe('adaptive planner', () => {
     expect(reduced.filter((session) => session.source === 'generated').length).toBeLessThan(full.filter((session) => session.source === 'generated').length)
   })
 
+  it('uses the study-block length chosen for that day and leaves a break between blocks', () => {
+    const plan = generateRevisionPlan(context({
+      availability: [{ weekday: 3, availableMinutes: 60, sessionMinutes: 20, startTime: '17:00' }],
+      topics: [
+        topic(),
+        topic({ id: 'topic-science', subjectId: 'science', subjectName: 'Science', name: 'Cells' }),
+        topic({ id: 'topic-english', subjectId: 'english', subjectName: 'English', name: 'Reading' }),
+      ],
+    }), 1).filter((session) => session.source === 'generated')
+
+    expect(plan).toHaveLength(3)
+    expect(plan.every((session) => session.plannedMinutes === 20)).toBe(true)
+    expect(plan.slice(1).map((session, index) => Date.parse(session.scheduledAt) - Date.parse(plan[index]!.scheduledAt))).toEqual([30 * 60_000, 30 * 60_000])
+  })
+
   it('preserves a locked manual session during replanning', () => {
     const locked = {
       id: 'locked-1', topicId: 'topic-maths', subjectId: 'maths', subjectName: 'Mathematics', topicName: 'Algebra',

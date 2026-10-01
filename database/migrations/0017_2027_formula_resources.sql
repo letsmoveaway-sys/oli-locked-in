@@ -1,0 +1,8 @@
+-- Official AQA support materials confirmed for the Summer 2027 series.
+INSERT OR REPLACE INTO revision_resources
+  (id, subject_id, topic_id, title, provider, resource_type, description, url, free_access, sort_order, verified_at)
+VALUES
+  ('res-maths-aqa-2027-formulae', 'subject-mathematics', NULL, '2027 Higher Maths formulae sheet', 'AQA', 'reference', 'The official sheet supplied in every AQA 8300 Higher paper in 2027. Practise finding, selecting and applying the formulae rather than memorising the sheet.', 'https://www.aqa.org.uk/filestore/maths/8300-INS-Mathematics-GCSE-Higher.pdf', 1, 0, '2026-09-30'),
+  ('res-science-aqa-2027-equations', 'subject-combined-science', NULL, '2027 Combined Science physics equations sheet', 'AQA', 'reference', 'The official AQA 8464 equations sheet supplied with both Combined Science: Trilogy physics papers in 2027. Practise selecting, rearranging and applying equations with units.', 'https://www.aqa.org.uk/filestore/science/AQA-GCSE-Science-8464-8465-INS-AI-V2.2.pdf', 1, 0, '2026-09-30'),
+  ('res-aqa-2027-support-guidance', 'subject-mathematics', NULL, 'AQA guidance for 2027 formulae sheets', 'AQA', 'reference', 'AQA confirmation of the support materials available in the 2027 examinations.', 'https://www.aqa.org.uk/news/gcse-maths-sciences-formulae-equation-sheets-2027-28', 1, 1, '2026-09-30'),
+  ('res-aqa-2027-science-guidance', 'subject-combined-science', NULL, 'AQA guidance for 2027 equation sheets', 'AQA', 'reference', 'AQA confirmation of the support materials available in the 2027 examinations.', 'https://www.aqa.org.uk/news/gcse-maths-sciences-formulae-equation-sheets-2027-28', 1, 1, '2026-09-30');

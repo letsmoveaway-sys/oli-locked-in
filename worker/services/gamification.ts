@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { productDateKey } from '../utils/dateTime'
 
 const XP = { plannedSession: 10, practiceQuiz: 5, redToAmber: 20, amberToGreen: 30, weeklyGoal: 50 }
 
@@ -21,8 +22,8 @@ export async function awardXp(studentId: string, eventType: string, points: numb
   return true
 }
 
-export async function awardSessionXp(studentId: string, sessionId: string, env: Env): Promise<void> {
-  await awardXp(studentId, 'planned_session', XP.plannedSession, env, sessionId)
+export async function awardSessionXp(studentId: string, sessionId: string, env: Env, points = XP.plannedSession): Promise<void> {
+  await awardXp(studentId, 'planned_session', points, env, sessionId)
 }
 
 export async function awardQuizXp(studentId: string, assessmentId: string, env: Env): Promise<void> {
@@ -30,7 +31,7 @@ export async function awardQuizXp(studentId: string, assessmentId: string, env: 
 }
 
 export async function awardRagTransitionXp(studentId: string, topicId: string, from: string | null, to: string, env: Env): Promise<void> {
-  const key = `${topicId}:${from ?? 'none'}:${to}:${new Date().toISOString().slice(0, 10)}`
+  const key = `${topicId}:${from ?? 'none'}:${to}:${productDateKey()}`
   if (from === 'red' && to === 'amber') await awardXp(studentId, `red_to_amber:${key}`, XP.redToAmber, env)
   if (from === 'amber' && to === 'green') await awardXp(studentId, `amber_to_green:${key}`, XP.amberToGreen, env)
 }

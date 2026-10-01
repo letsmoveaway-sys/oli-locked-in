@@ -169,7 +169,14 @@ export async function getCourseOverview(user: SessionUser, env: Env): Promise<Co
        FROM topics t
        JOIN student_subjects ss ON ss.subject_id = t.subject_id
        WHERE ss.student_id = ? AND t.active = 1 AND (t.tier = 'both' OR t.tier = ss.tier)
-       ORDER BY t.subject_id, t.parent_topic_id, t.name`,
+         AND (t.applicability = 'common'
+           OR (t.subject_id = 'subject-geography' AND (
+             t.id = json_extract(ss.options_json, '$.livingWorldOption')
+             OR t.id = json_extract(ss.options_json, '$.resourceOption')
+             OR instr(COALESCE(json_extract(ss.options_json, '$.ukLandscapeOptions'), ''), t.id) > 0
+           ))
+           OR (t.subject_id = 'subject-design-technology' AND COALESCE(json_extract(ss.options_json, '$.specialistMaterial'), 'TBC') <> 'TBC'))
+         ORDER BY t.subject_id, t.parent_topic_id, t.name`,
     ).bind(studentId).all<TopicRow>(),
   ])
 
@@ -194,6 +201,14 @@ export async function getCourseOverview(user: SessionUser, env: Env): Promise<Co
       children: (childrenByParent.get(topic.id) ?? []).map(mapTopic),
     })
     const options = parseOptions(subject.options_json)
+    const requiredKeys: Record<string, string[]> = {
+      'subject-english-literature': ['shakespeare', 'nineteenthCenturyNovel', 'modernText', 'poetryCluster'],
+      'subject-combined-science': ['course'],
+      'subject-history': ['thematicStudy', 'periodStudy', 'britishDepthStudy', 'modernDepthStudy'],
+      'subject-geography': ['livingWorldOption', 'ukLandscapeOptions', 'resourceOption', 'caseStudies'],
+      'subject-design-technology': ['specialistMaterial', 'neaStage'],
+    }
+    const requiredOptionsComplete = (requiredKeys[subject.id] ?? []).every((key) => options[key] && options[key] !== 'TBC')
     return {
       id: subject.id,
       name: subject.name,
@@ -204,7 +219,7 @@ export async function getCourseOverview(user: SessionUser, env: Env): Promise<Co
       currentGrade: subject.current_grade,
       targetGrade: subject.target_grade,
       options,
-      configurationComplete: subject.exam_board !== 'TBC' && options.configuration === 'confirmed' &&
+      configurationComplete: subject.exam_board !== 'TBC' && options.configuration === 'confirmed' && requiredOptionsComplete &&
         (!['subject-mathematics', 'subject-combined-science'].includes(subject.id) || subject.tier !== 'TBC'),
       components: componentResult.results
         .filter((component) => component.subject_id === subject.id)

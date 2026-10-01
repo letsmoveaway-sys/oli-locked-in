@@ -5,8 +5,12 @@ VALUES
   ('user-student-1', 'oliver', 'Oliver', 'student', 'local:student'),
   ('user-parent-1', 'parent', 'Parent', 'parent', 'local:parent');
 
-INSERT OR IGNORE INTO student_profiles (user_id, exam_year, default_session_minutes)
-VALUES ('user-student-1', 2027, 35);
+INSERT OR IGNORE INTO student_profiles (user_id, exam_year, default_session_minutes, ai_marking_enabled)
+VALUES ('user-student-1', 2027, 35, 1);
+
+-- Development and browser-test data deliberately enables the optional route so it can be exercised.
+-- Production profiles retain the migration default of off until a Parent opts in.
+UPDATE student_profiles SET ai_marking_enabled = 1 WHERE user_id = 'user-student-1';
 
 INSERT OR IGNORE INTO subjects (id, name, exam_board, specification_code)
 VALUES
@@ -23,7 +27,7 @@ INSERT OR IGNORE INTO student_subjects (student_id, subject_id, tier, options_js
 SELECT 'user-student-1', id,
   CASE
     WHEN id IN ('subject-mathematics', 'subject-combined-science') THEN 'higher'
-    WHEN id IN ('subject-english-language', 'subject-english-literature', 'subject-history') THEN 'not_applicable'
+    WHEN id IN ('subject-english-language', 'subject-english-literature', 'subject-history', 'subject-geography', 'subject-business', 'subject-design-technology') THEN 'not_applicable'
     ELSE 'TBC'
   END,
   CASE
@@ -32,6 +36,9 @@ SELECT 'user-student-1', id,
     WHEN id = 'subject-english-literature' THEN '{"configuration":"confirmed","shakespeare":"Macbeth","nineteenthCenturyNovel":"A Christmas Carol","modernText":"An Inspector Calls","poetryCluster":"Power and Conflict"}'
     WHEN id = 'subject-combined-science' THEN '{"configuration":"confirmed","course":"Trilogy","courseStatus":"working assumption"}'
     WHEN id = 'subject-history' THEN '{"configuration":"confirmed"}'
+    WHEN id = 'subject-geography' THEN '{"configuration":"confirmed","livingWorldOption":"TBC","ukLandscapeOptions":"TBC","resourceOption":"TBC","caseStudies":"TBC"}'
+    WHEN id = 'subject-business' THEN '{"configuration":"confirmed"}'
+    WHEN id = 'subject-design-technology' THEN '{"configuration":"confirmed","specialistMaterial":"TBC"}'
     ELSE '{"configuration":"TBC"}'
   END
 FROM subjects;

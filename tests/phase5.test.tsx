@@ -24,7 +24,7 @@ const subject: CourseSubject = {
 
 describe('Phase 5 student experience', () => {
   it('shows today’s session and opens the completion journey', () => {
-    render(<TodayDashboard sessions={[session]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onReviewTopic={vi.fn()} onViewTopic={vi.fn()} onOpenWeek={vi.fn()} />)
+    render(<TodayDashboard sessions={[session]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onQuickRevision={vi.fn()} onReviewTopic={vi.fn()} onStart={vi.fn()} onViewTopic={vi.fn()} onOpenWeek={vi.fn()} />)
     expect(screen.getByText('Your revision for today')).toBeInTheDocument()
     expect(screen.getByText('Why this is here: Low mastery and an upcoming review.')).toBeInTheDocument()
     expect(screen.getByText('Memory review from earlier learning')).toBeInTheDocument()
@@ -35,14 +35,14 @@ describe('Phase 5 student experience', () => {
   })
 
   it('renders the seven-day planner with move controls', () => {
-    render(<WeeklyPlanner sessions={[session]} topics={[topic]} onMove={vi.fn()} onReplan={vi.fn()} onReviewTopic={vi.fn()} onViewTopic={vi.fn()} />)
+    render(<WeeklyPlanner sessions={[session]} topics={[topic]} onComplete={vi.fn()} onMove={vi.fn()} onReplan={vi.fn()} onReviewTopic={vi.fn()} onViewTopic={vi.fn()} />)
     expect(screen.getAllByText(/Rest \/ unavailable|Mathematics/).length).toBeGreaterThanOrEqual(7)
     expect(screen.getByRole('button', { name: 'Postpone / swap' })).toBeInTheDocument()
   })
 
   it('reopens completed session content through a separate review action', () => {
     const onReviewTopic = vi.fn()
-    render(<TodayDashboard sessions={[{ ...session, status: 'completed' }]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onReviewTopic={onReviewTopic} onViewTopic={vi.fn()} onOpenWeek={vi.fn()} />)
+    render(<TodayDashboard sessions={[{ ...session, status: 'completed' }]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onQuickRevision={vi.fn()} onReviewTopic={onReviewTopic} onStart={vi.fn()} onViewTopic={vi.fn()} onOpenWeek={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Review content' }))
     expect(onReviewTopic).toHaveBeenCalledWith('topic-1')
   })

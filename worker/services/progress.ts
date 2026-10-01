@@ -83,7 +83,15 @@ export async function getProgress(user: SessionUser, env: Env): Promise<TopicPro
      JOIN subjects s ON s.id = t.subject_id
      JOIN student_subjects ss ON ss.subject_id = t.subject_id AND ss.student_id = ?
      LEFT JOIN topic_progress tp ON tp.topic_id = t.id AND tp.student_id = ?
-     WHERE t.active = 1 AND ss.active = 1 AND t.applicability = 'common'
+     WHERE t.active = 1 AND ss.active = 1
+       AND (t.applicability = 'common'
+         OR (t.subject_id = 'subject-geography' AND (
+           t.id = json_extract(ss.options_json, '$.livingWorldOption')
+           OR t.id = json_extract(ss.options_json, '$.resourceOption')
+           OR instr(COALESCE(json_extract(ss.options_json, '$.ukLandscapeOptions'), ''), t.id) > 0
+         ))
+         OR (t.subject_id = 'subject-design-technology'
+           AND COALESCE(json_extract(ss.options_json, '$.specialistMaterial'), 'TBC') <> 'TBC'))
        AND (t.tier = 'both' OR t.tier = ss.tier)
        AND NOT EXISTS (SELECT 1 FROM topics child WHERE child.parent_topic_id = t.id AND child.active = 1)
      ORDER BY s.name, t.name`,
@@ -118,8 +126,8 @@ export async function getTopicDetail(user: SessionUser, topicId: string, env: En
       .bind(studentId, topicId).first<{ notes: string | null }>(),
     env.DB.prepare('SELECT score, recorded_at, reason FROM mastery_history WHERE student_id = ? AND topic_id = ? ORDER BY recorded_at DESC LIMIT 20')
       .bind(studentId, topicId).all<{ score: number; recorded_at: string; reason: string }>(),
-    env.DB.prepare('SELECT percentage, assessment_type, marking_source, marking_confidence, feedback_json, completed_at FROM assessments WHERE student_id = ? AND topic_id = ? ORDER BY completed_at DESC LIMIT 20')
-      .bind(studentId, topicId).all<{ percentage: number; assessment_type: string; marking_source: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'; marking_confidence: 'low' | 'medium' | 'high' | null; feedback_json: string | null; completed_at: string }>(),
+    env.DB.prepare('SELECT percentage, assessment_type, marking_source, marking_confidence, feedback_json, marking_model, rubric_version, completed_at FROM assessments WHERE student_id = ? AND topic_id = ? ORDER BY completed_at DESC LIMIT 20')
+      .bind(studentId, topicId).all<{ percentage: number; assessment_type: string; marking_source: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'; marking_confidence: 'low' | 'medium' | 'high' | null; feedback_json: string | null; marking_model: string | null; rubric_version: string | null; completed_at: string }>(),
     env.DB.prepare(`SELECT id, scheduled_at, planned_minutes, actual_minutes, status, session_type, confidence_after, notes
                     FROM revision_sessions WHERE student_id = ? AND topic_id = ?
                     ORDER BY scheduled_at DESC LIMIT 20`)
@@ -130,7 +138,7 @@ export async function getTopicDetail(user: SessionUser, topicId: string, env: En
     ...topic,
     notes: progress?.notes ?? '',
     masteryHistory: history.results.map((item) => ({ score: item.score, recordedAt: item.recorded_at, reason: item.reason })),
-    assessments: assessments.results.map((item) => ({ percentage: item.percentage, assessmentType: item.assessment_type, markingSource: item.marking_source, markingConfidence: item.marking_confidence, feedback: item.feedback_json ? JSON.parse(item.feedback_json) as { summary?: string; nextStep?: string } : null, completedAt: item.completed_at })),
+    assessments: assessments.results.map((item) => ({ percentage: item.percentage, assessmentType: item.assessment_type, markingSource: item.marking_source, markingConfidence: item.marking_confidence, feedback: item.feedback_json ? JSON.parse(item.feedback_json) as { summary?: string; nextStep?: string } : null, markingModel: item.marking_model, rubricVersion: item.rubric_version, completedAt: item.completed_at })),
     sessions: sessions.results.map((item) => ({
       id: item.id,
       scheduledAt: item.scheduled_at,
@@ -148,14 +156,22 @@ async function topicAvailable(studentId: string, topicId: string, env: Env): Pro
   const row = await env.DB.prepare(
     `SELECT t.id FROM topics t
      JOIN student_subjects ss ON ss.subject_id = t.subject_id AND ss.student_id = ?
-     WHERE t.id = ? AND t.active = 1 AND ss.active = 1 AND t.applicability = 'common'
+     WHERE t.id = ? AND t.active = 1 AND ss.active = 1
+       AND (t.applicability = 'common'
+         OR (t.subject_id = 'subject-geography' AND (
+           t.id = json_extract(ss.options_json, '$.livingWorldOption')
+           OR t.id = json_extract(ss.options_json, '$.resourceOption')
+           OR instr(COALESCE(json_extract(ss.options_json, '$.ukLandscapeOptions'), ''), t.id) > 0
+         ))
+         OR (t.subject_id = 'subject-design-technology'
+           AND COALESCE(json_extract(ss.options_json, '$.specialistMaterial'), 'TBC') <> 'TBC'))
        AND (t.tier = 'both' OR t.tier = ss.tier)
        AND NOT EXISTS (SELECT 1 FROM topics child WHERE child.parent_topic_id = t.id AND child.active = 1)`,
   ).bind(studentId, topicId).first<{ id: string }>()
   return Boolean(row)
 }
 
-export async function recalculateTopicMastery(studentId: string, topicId: string, reason: string, env: Env): Promise<boolean> {
+export async function recalculateTopicMastery(studentId: string, topicId: string, reason: string, env: Env, operationKey: string | null = null): Promise<boolean> {
   const row = await env.DB.prepare(
     `SELECT tp.confidence, tp.total_sessions, tp.total_minutes, tp.last_revised_at, tp.rag_status,
             (SELECT a.percentage FROM assessments a
@@ -191,9 +207,9 @@ export async function recalculateTopicMastery(studentId: string, topicId: string
          updated_at = CURRENT_TIMESTAMP`,
     ).bind(studentId, topicId, mastery.score, mastery.ragStatus, nextReview),
     env.DB.prepare(
-      `INSERT INTO mastery_history (id, student_id, topic_id, score, recorded_at, reason)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?)`,
-    ).bind(historyId, studentId, topicId, mastery.score ?? 0, reason),
+      `INSERT OR IGNORE INTO mastery_history (id, student_id, topic_id, score, recorded_at, reason, operation_key)
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
+    ).bind(historyId, studentId, topicId, mastery.score ?? 0, reason, operationKey),
   ])
   await awardRagTransitionXp(studentId, topicId, row.rag_status, mastery.ragStatus, env)
   return true
@@ -221,16 +237,16 @@ export async function addAssessment(
   maximumScore: number,
   assessmentType: string,
   env: Env,
-  evidence: { markingSource?: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'; markingConfidence?: 'low' | 'medium' | 'high' | null; feedback?: { summary?: string; nextStep?: string } | null } = {},
+  evidence: { markingSource?: 'auto_marked' | 'ai_estimated' | 'self_reported' | 'teacher_marked'; markingConfidence?: 'low' | 'medium' | 'high' | null; feedback?: { summary?: string; nextStep?: string } | null; markingModel?: string | null; rubricVersion?: string | null } = {},
 ): Promise<boolean> {
   if (!(await topicAvailable(user.id, topicId, env))) return false
   const percentage = Math.round((score / maximumScore) * 1000) / 10
   const assessmentId = crypto.randomUUID()
   await env.DB.prepare(
     `INSERT INTO assessments
-      (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, marking_source, marking_confidence, feedback_json, completed_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-  ).bind(assessmentId, user.id, topicId, score, maximumScore, percentage, assessmentType, evidence.markingSource ?? 'auto_marked', evidence.markingConfidence ?? null, evidence.feedback ? JSON.stringify(evidence.feedback) : null).run()
+      (id, student_id, topic_id, score, maximum_score, percentage, assessment_type, marking_source, marking_confidence, feedback_json, marking_model, rubric_version, completed_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+  ).bind(assessmentId, user.id, topicId, score, maximumScore, percentage, assessmentType, evidence.markingSource ?? 'auto_marked', evidence.markingConfidence ?? null, evidence.feedback ? JSON.stringify(evidence.feedback) : null, evidence.markingModel ?? null, evidence.rubricVersion ?? null).run()
   await awardQuizXp(user.id, assessmentId, env)
   return recalculateTopicMastery(user.id, topicId, `${assessmentType} recorded at ${percentage}%`, env)
 }

@@ -1,6 +1,8 @@
 # Oli: Locked In
 
-Oli's private GCSE dashboard: a complete seven-phase V1 revision and learning application. It includes a responsive React client, Cloudflare Worker API, D1 schema and development data, signed cookie authentication, Parent course configuration, a confirmed Edexcel History map, built-in lessons and practice, evidence-based progress, an adaptive 14-day planner, Student and Parent dashboards, workload analytics, gamification and automated browser testing.
+Oli's private GCSE dashboard: a mobile-first revision planner and practice app being prepared for daily GCSE use. It includes a responsive React client, Cloudflare Worker API, D1 schema, signed cookie authentication, Parent course and calendar controls, original topic practice, evidence-based progress, an adaptive 14-day planner, Student and Parent dashboards, workload analytics, restrained gamification and automated browser testing.
+
+The app is designed to reduce the decision of what to revise next. It does not claim to replace teaching, textbooks, official specifications, past papers or mark schemes. In-app practice is original and currently editorially checked; independent subject-teacher QA remains a release requirement for high-stakes content.
 
 ## Requirements
 
@@ -62,7 +64,7 @@ Tests cover password/session security, API authentication and role enforcement, 
 
 The public `/demo` page lets visitors try a sample revision session, an original History question, a weekly availability change and a Parent summary without signing in. It uses browser-only example data, makes no API requests and resets when the visitor leaves. The private Student and Parent accounts remain behind sign-in.
 
-Open **Learn & practise** after signing in. Confirmed subjects include:
+Open **Learn** after signing in. Confirmed subjects include:
 
 - the relevant exam-board paper structure and assessment objectives;
 - clear advice on what examiners award marks for;
@@ -70,17 +72,17 @@ Open **Learn & practise** after signing in. Confirmed subjects include:
 - a navigable topic map whose confirmed topics open revision activities;
 - learning objectives, key knowledge, worked examples, original practice questions, mark-appropriate exemplars and plain-English explanations of why an answer earns credit.
 
-Opening a topic starts a full-page four-stage session: learn the topic, study worked examples, complete independent practice, then review marked answers and direct topic resources. Reviewed multiple-choice questions are automatically marked. Written-answer activities include a **Continue on phone** QR hand-off that opens the exact topic at the answer stage after normal sign-in; the QR contains no password or session. Written responses can be typed or supplied as up to four photographs. On supported phones, the no-key route sends the photographs and prepared marking prompt together through the native share sheet so the student can choose Gemini; manual copy/open remains available as a fallback. Optional server-side marking provides a one-tap route when configured. The Student chooses whether a sufficiently confident AI estimate is saved. Parent-facing evidence labels results as auto-marked, AI-estimated, self-reported or teacher-marked.
+Opening a topic starts a full-page four-stage session: learn the topic, study worked examples, complete independent practice, then review marked answers and direct topic resources. Selected knowledge questions are marked by the server. Written responses can always be typed and checked against marking points and an exemplar without AI. Activities offer a **Continue on phone** QR hand-off; the QR contains no password or session. If a Parent enables optional AI marking, the Student can also select up to four photographs. On supported phones, the no-key route can share photographs and a prepared prompt to Gemini; a manual copy/open route remains available. Optional server-side marking provides a one-tap route when configured. The Student sees a disclosure and must opt in before each transfer. Only signed, sufficiently confident server marks can update mastery; pasted external results provide feedback only.
 
 Completed sessions expose a read-only **Review content** action. Learners can revisit explanations, exemplars and practice without replacing stored scores or mastery. Where BBC has a close lesson match, extra help links directly to that verified BBC Bitesize topic page rather than to general search results; unmatched lessons do not show a misleading BBC link.
 
 During the POC, the Parent dashboard includes a typed-confirmation **Reset POC revision progress** control. It clears lesson activity, assessments, mastery, notes and XP and then generates a fresh plan, while preserving accounts, course configuration, exam dates, tutors and availability.
 
-Generic topic-description quizzes are not used. A topic without reviewed assessment content shows starter guidance and official resources; its practice can receive feedback but cannot change mastery. This applies to every subject, not only English.
+Generic topic-description quizzes are not used. A topic without topic-specific assessment content shows starter guidance and official resources; its practice can receive feedback but cannot change mastery. Every lesson displays its content version, source and review status.
 
 Built-in History lessons include school-guide-based notes for Medicine and Elizabeth. Other confirmed History topics receive a revision activity and a link to the official specification. In-app practice questions are original; linked exam-board materials remain the authoritative source for official past questions and mark schemes.
 
-Confirmed courses are AQA Mathematics 8300 Higher, English Language 8700, English Literature 8702 with *Macbeth*, *A Christmas Carol*, *An Inspector Calls* and Power and Conflict, AQA Combined Science: Trilogy 8464 Higher, and Edexcel History 1HI0. Trilogy is recorded as a working assumption pending sight of the final entry code. Other subjects remain TBC and are excluded from topic planning.
+Confirmed courses are AQA Mathematics 8300 Higher, English Language 8700, English Literature 8702 with *Macbeth*, *A Christmas Carol*, *An Inspector Calls* and Power and Conflict, AQA Combined Science: Trilogy 8464 Higher, Edexcel History 1HI0, AQA Geography 8035, Pearson Edexcel Business 1BS0, and AQA Design and Technology 8552. Trilogy is recorded as a working assumption pending sight of the final entry code. Geography option units and named case studies, plus the D&T specialist material area, remain explicitly marked as choices to confirm and stay out of adaptive planning until then.
 
 ## Architecture
 
@@ -132,11 +134,13 @@ These steps require you to sign into your own Cloudflare account; do not share t
    npx wrangler secret put GEMINI_API_KEY
    ```
 
-   `GEMINI_API_KEY` is optional. Without it, students can choose **Mark with Gemini — no API key** and share the answer photographs plus prepared prompt to Gemini from a supported phone. A manual copy/open route remains available where file sharing is unsupported. The student pastes Gemini's structured reply back into the app. With a key, the one-tap automatic marking route is also available. A configured key is used only by the Worker and is never returned to the browser. `GEMINI_MODEL` defaults to `gemini-2.5-flash` and can be set as a non-secret Worker variable.
+   `GEMINI_API_KEY` is optional. AI routes are off by default in production and require a Parent to enable them. Without a key, an enabled account can use the external Gemini share/copy flow; pasted feedback cannot change mastery. With a key, the one-tap route is also available and returns signed evidence. A configured key is used only by the Worker and is never returned to the browser. `GEMINI_MODEL` defaults to `gemini-2.5-flash` and can be set as a non-secret Worker variable.
 
    Generate hashes with the current `npm run auth:hash` script. Cloudflare's Worker PBKDF2 implementation rejects the older 210,000-iteration hashes; the script now uses 100,000 iterations. Use long, unique passwords and keep the production passwords in a password manager.
 
 6. Change `ENVIRONMENT` in `wrangler.jsonc` to `production`, run `npm run check`, then deploy with `npm run deploy`.
+
+Backups, restore rehearsal and the post-deployment smoke test are documented in [OPERATIONS.md](OPERATIONS.md).
 
 The seed creates `oliver` and `parent` accounts. The Oliver username is also applied to existing databases by migration `0011_rename_student_oliver.sql`. Production deployment is intentionally manual; CI validates every push without requiring account secrets.
 
@@ -146,7 +150,7 @@ The local migrations configure AQA Mathematics 8300 Higher, English Language 870
 
 History covers Medicine in Britain and the Western Front (Paper 1, option 11), Early Elizabethan England and The American West (Paper 2, option 2M), and Weimar and Nazi Germany (Paper 3, option 31). The school guides in `SchoolRevisionGuides/History` cover Medicine and Elizabeth; the Edexcel Issue 6 specification supplies the complete map, including Germany and the American West.
 
-Geography choices and case studies, Business, and the D&T specialist area remain `TBC`. Topic planning includes only confirmed courses.
+The AQA Geography, Pearson Edexcel Business and AQA Design and Technology specification maps and assessments are included. Geography choices and named case studies and the D&T specialist material area remain `TBC`; the app shows these rows but excludes them from adaptive planning until confirmed. The Geography guide also links to the requested BBC Bitesize and Internet Geography resources.
 
 ## Phase 4 adaptive planner
 
@@ -170,7 +174,7 @@ Analytics report coverage, mastery, workload remaining and consistency as separa
 
 Completed sessions, self-tests, mastery transitions and weekly targets award idempotent XP. The Student dashboard shows level progress, a configurable weekly minutes goal, protected streaks and restrained achievements. Semantic landmarks, keyboard focus, text RAG labels, reduced-motion support, mobile layouts and accessible SVG descriptions support the accessibility baseline.
 
-Playwright verifies the critical journey in isolated desktop and mobile Chromium environments: sign in, choose a topic, start revision, complete it with time/confidence/score/notes, receive XP and see the evidence in topic history. Production builds remove copied local secret files before deployment and responses include CSP, framing, MIME, referrer, permissions and production HSTS protections.
+The automated suite currently has 82 unit/integration checks and eight Playwright journeys across desktop and mobile Chromium. It verifies sign-in, deep links and refresh, topic learning, phone hand-off, optional marking, trustworthy completion/evidence, Parent reset and representative WCAG scans. Production builds remove copied local secret files before deployment and responses include CSP, framing, MIME, referrer, permissions and production HSTS protections. `npm audit` reports no known dependency vulnerabilities at the time of this update.
 
 ## Phase 3 progress model
 

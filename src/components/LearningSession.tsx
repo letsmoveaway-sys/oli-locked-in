@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { TopicDetail, TopicRevision, WrittenMark } from '../types'
 import { markWrittenResponse } from '../services/api'
 import { buildExternalMarkingPrompt, parseExternalMarkingResult, shareAnswerForMarking } from '../services/externalMarking'
@@ -10,7 +10,8 @@ interface LearningSessionProps {
   topic: TopicDetail
   revision: TopicRevision
   onBack: () => void
-  onResult: (topicId: string, score: number, maximumScore: number, evidence?: { assessmentType: string; markingSource: 'auto_marked' | 'ai_estimated'; markingConfidence?: 'low' | 'medium' | 'high'; feedback?: { summary?: string; nextStep?: string } }) => Promise<void>
+  onResult: (topicId: string, score: number, maximumScore: number, evidence?: { assessmentType: string; markingSource: 'auto_marked' | 'ai_estimated'; markingConfidence?: 'low' | 'medium' | 'high'; feedback?: { summary?: string; nextStep?: string }; evidenceToken?: string }) => Promise<void>
+  onKnowledgeCheck?: (topicId: string, answers: Record<string, number>) => Promise<{ score: number; maximumScore: number }>
   onReviseNow: (topicId: string) => Promise<void>
   recordResults: boolean
   reviewMode?: boolean
@@ -21,12 +22,42 @@ const stages: Array<{ id: Stage; label: string }> = [
   { id: 'test', label: '3. Test yourself' }, { id: 'results', label: '4. Results' },
 ]
 
-export function LearningSession({ topic, revision, onBack, onResult, onReviseNow, recordResults, reviewMode = false }: LearningSessionProps) {
-  const [stage, setStage] = useState<Stage>(() => new URLSearchParams(window.location.search).get('stage') === 'test' ? 'test' : 'overview')
-  const [answers, setAnswers] = useState<Record<string, number>>({})
+function dataUrlFor(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Unable to read that photograph.'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function privacySafeImage(file: File): Promise<string> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap !== 'function') return dataUrlFor(file)
+  const bitmap = await createImageBitmap(file)
+  try {
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const compressed = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', .82))
+    return compressed ? dataUrlFor(compressed) : dataUrlFor(file)
+  } finally { bitmap.close() }
+}
+
+export function LearningSession({ topic, revision, onBack, onResult, onKnowledgeCheck, onReviseNow, recordResults, reviewMode = false }: LearningSessionProps) {
+  const draftKey = `gcse-revision-draft:${topic.topicId}`
+  const [stage, setStage] = useState<Stage>(() => {
+    if (new URLSearchParams(window.location.search).get('stage') === 'test') return 'test'
+    const saved = localStorage.getItem(`${draftKey}:stage`)
+    return saved === 'overview' || saved === 'examples' || saved === 'test' ? saved : 'overview'
+  })
+  const [answers, setAnswers] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem(`${draftKey}:answers`) ?? '{}') as Record<string, number> } catch { return {} }
+  })
   const [result, setResult] = useState<{ score: number; maximum: number } | null>(null)
+  const [resultSaveState, setResultSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [saving, setSaving] = useState(false)
-  const [writtenAnswer, setWrittenAnswer] = useState('')
+  const [writtenAnswer, setWrittenAnswer] = useState(() => localStorage.getItem(`${draftKey}:written`) ?? '')
   const [answerImages, setAnswerImages] = useState<Array<{ name: string; dataUrl: string }>>([])
   const [writtenMark, setWrittenMark] = useState<WrittenMark | null>(null)
   const [marking, setMarking] = useState(false)
@@ -39,16 +70,52 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
   const [promptCopied, setPromptCopied] = useState(false)
   const [shareStatus, setShareStatus] = useState('')
   const [markingRoute, setMarkingRoute] = useState<'automatic' | 'external'>('automatic')
+  const [privacyConfirmed, setPrivacyConfirmed] = useState(false)
+  const [timerRunning, setTimerRunning] = useState(false)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const maximum = useMemo(() => revision.testQuestions.reduce((sum, question) => sum + question.marks, 0), [revision.testQuestions])
   const isMaths = topic.subjectId === 'subject-mathematics'
   const writtenQuestion = revision.writtenQuestions.at(-1)
   const exampleQuestions = revision.writtenQuestions.length > 1 ? revision.writtenQuestions.slice(0, -1) : revision.writtenQuestions
   const externalPrompt = useMemo(() => writtenQuestion ? buildExternalMarkingPrompt(writtenQuestion, writtenAnswer) : '', [writtenQuestion, writtenAnswer])
 
+  useEffect(() => {
+    if (!recordResults) return
+    localStorage.setItem(`${draftKey}:stage`, stage)
+    localStorage.setItem(`${draftKey}:answers`, JSON.stringify(answers))
+    localStorage.setItem(`${draftKey}:written`, writtenAnswer)
+  }, [answers, draftKey, recordResults, stage, writtenAnswer])
+
+  useEffect(() => {
+    if (!timerRunning) return
+    const interval = window.setInterval(() => setElapsedSeconds((seconds) => seconds + 1), 1000)
+    return () => window.clearInterval(interval)
+  }, [timerRunning])
+
+  const timerLabel = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:${String(elapsedSeconds % 60).padStart(2, '0')}`
+
+  async function saveKnowledgeCheck(score: number) {
+    if (!recordResults) return
+    setResultSaveState('saving'); setSaving(true)
+    try {
+      if (onKnowledgeCheck) {
+        const saved = await onKnowledgeCheck(topic.topicId, answers)
+        setResult({ score: saved.score, maximum: saved.maximumScore })
+      } else {
+        await onResult(topic.topicId, score, maximum, { assessmentType: 'In-app knowledge check', markingSource: 'auto_marked', markingConfidence: 'high' })
+      }
+      setResultSaveState('saved')
+      localStorage.removeItem(`${draftKey}:answers`)
+      localStorage.removeItem(`${draftKey}:stage`)
+    } catch {
+      setResultSaveState('failed')
+    } finally { setSaving(false) }
+  }
+
   async function finishTest() {
     const score = revision.testQuestions.reduce((sum, question) => sum + (answers[question.id] === question.correctOption ? question.marks : 0), 0)
-    setResult({ score, maximum }); setStage('results'); setSaving(true)
-    try { if (recordResults) await onResult(topic.topicId, score, maximum, { assessmentType: 'Reviewed knowledge check', markingSource: 'auto_marked', markingConfidence: 'high' }) } finally { setSaving(false) }
+    setResult({ score, maximum }); setStage('results'); setResultSaveState(recordResults ? 'saving' : 'idle')
+    await saveKnowledgeCheck(score)
   }
 
   async function selectAnswerImages(files: FileList | null) {
@@ -57,12 +124,7 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
     if (selected.some((file) => file.size > 8 * 1024 * 1024)) {
       setMarkingError('Each photograph must be smaller than 8 MB.'); return
     }
-    const loaded = await Promise.all(selected.map((file) => new Promise<{ name: string; dataUrl: string }>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve({ name: file.name, dataUrl: String(reader.result) })
-      reader.onerror = () => reject(new Error('Unable to read that photograph.'))
-      reader.readAsDataURL(file)
-    })))
+    const loaded = await Promise.all(selected.map(async (file) => ({ name: file.name, dataUrl: await privacySafeImage(file) })))
     setAnswerImages(loaded)
     if (loaded.length && !revision.automaticMarkingAvailable) setExternalMarkingOpen(true)
   }
@@ -119,7 +181,7 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
   async function saveWrittenResult() {
     if (!writtenQuestion || !writtenMark || !writtenQuestion.canUpdateMastery || writtenMark.confidence === 'low') return
     setSaving(true)
-    try { await onResult(topic.topicId, writtenMark.estimatedMark, writtenMark.maximumMark, { assessmentType: markingRoute === 'external' ? 'Imported Gemini estimate' : 'AI-estimated written answer', markingSource: 'ai_estimated', markingConfidence: writtenMark.confidence, feedback: { summary: writtenMark.summary, nextStep: writtenMark.nextStep } }); setWrittenSaved(true) }
+    try { await onResult(topic.topicId, writtenMark.estimatedMark, writtenMark.maximumMark, { assessmentType: 'AI-estimated written answer', markingSource: 'ai_estimated', markingConfidence: writtenMark.confidence, feedback: { summary: writtenMark.summary, nextStep: writtenMark.nextStep }, evidenceToken: writtenMark.evidenceToken }); setWrittenSaved(true) }
     finally { setSaving(false) }
   }
 
@@ -127,14 +189,15 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
     <header className="learning-session__header">
       <button className="secondary" onClick={onBack} type="button">← Back</button>
       <div><p className="eyebrow">{topic.subjectName} · Full revision session</p><h1 id="learning-session-heading">{topic.topicName}</h1></div>
-      <div className="lesson-header-actions"><span className={`rag-label rag--${topic.ragStatus}`}>{topic.masteryScore === null ? 'Not assessed' : `${Math.round(topic.masteryScore)}% mastery`}</span>{recordResults ? <button onClick={() => void onReviseNow(topic.topicId)} type="button">Revise now</button> : null}</div>
+      <div className="lesson-header-actions"><span className={`rag-label rag--${topic.ragStatus}`}>{topic.masteryScore === null ? 'Not assessed' : `${Math.round(topic.masteryScore)}% mastery`}</span><div className="calm-timer"><span aria-label={`${Math.floor(elapsedSeconds / 60)} minutes ${elapsedSeconds % 60} seconds elapsed`} role="timer">{timerLabel}</span><button className="secondary" onClick={() => setTimerRunning((running) => !running)} type="button">{timerRunning ? 'Pause timer' : elapsedSeconds ? 'Resume timer' : 'Start timer'}</button>{elapsedSeconds ? <button className="text-button" onClick={() => { setTimerRunning(false); setElapsedSeconds(0) }} type="button">Reset</button> : null}<small>Optional · no countdown</small></div>{recordResults ? <button onClick={() => void onReviseNow(topic.topicId)} type="button">Revise now</button> : null}</div>
     </header>
     {reviewMode ? <p className="review-mode-notice" role="status"><strong>Review mode:</strong> revisit any content and practise freely. Nothing in this session will replace or change your saved test scores, mastery or completed-session record.</p> : null}
     <nav className="lesson-steps" aria-label="Revision session stages">{stages.map((item) => <button aria-current={stage === item.id ? 'step' : undefined} disabled={item.id === 'results' && !result} key={item.id} onClick={() => setStage(item.id)} type="button">{item.label}</button>)}</nav>
 
     {stage === 'overview' ? <div className="lesson-page card">
       <p className="eyebrow">Topic overview</p><h2>Understand the topic first</h2><p className="lesson-lead">{revision.summary}</p>
-      {!revision.bespoke ? <p className="fallback-notice">{revision.assessmentAvailable ? <><strong>Reviewed exam practice available.</strong> The overview is concise, but the question below is topic-specific, includes a worked answer and can contribute to mastery.</> : <><strong>Starter guidance only.</strong> Detailed, reviewed assessment content is still being added for this topic. You can practise and request feedback, but this activity will not change mastery. Use the official topic resource below for authoritative coverage.</>}</p> : null}
+      <aside className={`content-trust content-trust--${revision.contentProvenance.reviewStatus}`}><strong>{revision.contentProvenance.reviewStatus === 'subject_expert_checked' ? 'Subject-expert checked content' : revision.contentProvenance.reviewStatus === 'editorial_checked' ? 'Original, topic-specific app practice' : 'Starter content'}</strong><span>Version {revision.contentProvenance.version}{revision.contentProvenance.reviewedAt ? ` · checked ${revision.contentProvenance.reviewedAt}` : ''}</span><small>{revision.contentProvenance.reviewStatus === 'editorial_checked' ? 'Checked for topic alignment and answer completeness; independent subject-teacher QA is still pending.' : revision.contentProvenance.reviewStatus === 'draft' ? 'Use the official course source for authoritative coverage. Draft work does not update mastery.' : `Reviewed by ${revision.contentProvenance.reviewer ?? 'a subject expert'}.`}</small>{revision.contentProvenance.sourceUrl ? <a href={revision.contentProvenance.sourceUrl} rel="noreferrer" target="_blank">Open official course source ↗</a> : null}</aside>
+      {!revision.bespoke ? <p className="fallback-notice">{revision.assessmentAvailable ? <><strong>Topic-specific original practice is available.</strong> The overview is concise, but the question below has a worked answer and can contribute to mastery.</> : <><strong>Starter guidance only.</strong> Detailed assessment content is still being added for this topic. You can practise and request feedback, but this activity will not change mastery. Use the official topic resource below for authoritative coverage.</>}</p> : null}
       <div className="revision-columns"><section><h3>What you need to be able to do</h3><ul>{revision.learningObjectives.map((item) => <li key={item}>{item}</li>)}</ul></section><section><h3>Key knowledge</h3><ul>{revision.keyPoints.map((item) => <li key={item}>{item}</li>)}</ul></section></div>
       <section className="exam-tip-panel"><h3>Exam technique</h3><ul>{revision.examTips.map((item) => <li key={item}>{item}</li>)}</ul></section>
       {revision.resources.some((resource) => resource.provider === 'BBC Bitesize') ? <section><h3>Learn it another way</h3><div className="resource-grid">{revision.resources.filter((resource) => resource.provider === 'BBC Bitesize').map((resource) => <a className="resource-card" href={resource.url} key={resource.id} rel="noreferrer" target="_blank"><span>BBC Bitesize · lesson and examples</span><strong>{resource.title}</strong><small>{resource.description}</small></a>)}</div></section> : null}
@@ -156,21 +219,22 @@ export function LearningSession({ topic, revision, onBack, onResult, onReviseNow
         {!writtenQuestion.canUpdateMastery ? <p className="fallback-notice">This is unscored starter practice. Feedback is for improvement and will not change mastery.</p> : null}
         <p className="assessment-hint">{isMaths ? 'Show the calculation in the box, or work it out by hand and add a photograph.' : 'Choose how to answer: type below, or use handwritten work on your phone.'}</p>
         <label className="written-answer-label">{isMaths ? 'Enter your working and final answer' : 'Type your answer in the app'}<textarea onChange={(event) => { setWrittenAnswer(event.target.value); setWrittenMark(null); setWrittenSaved(false) }} placeholder={isMaths ? 'Show each step and include the final answer…' : 'Write or paste your answer here…'} rows={isMaths ? 5 : 10} value={writtenAnswer} /></label>
-        <div className="answer-divider"><span>or use handwritten work</span></div>
-        {recordResults ? <PhoneHandoff topicId={topic.topicId} /> : null}
-        <label className="photo-answer">Take or choose up to four clear photographs on this device<input accept="image/png,image/jpeg,image/webp,image/heic,image/heif" multiple onChange={(event) => void selectAnswerImages(event.target.files)} type="file" /></label>
-        {answerImages.length ? <ul className="selected-images">{answerImages.map((image, index) => <li key={`${image.name}-${index}`}>Page {index + 1}: {image.name}</li>)}</ul> : null}
+        {recordResults ? <><div className="answer-divider"><span>or continue on another device</span></div><PhoneHandoff topicId={topic.topicId} /></> : null}
+        {revision.aiMarkingAllowed ? <><div className="answer-divider"><span>or use handwritten work</span></div>
+          <label className="photo-answer">Take or choose up to four clear photographs on this device<input accept="image/png,image/jpeg,image/webp,image/heic,image/heif" multiple onChange={(event) => void selectAnswerImages(event.target.files)} type="file" /></label>
+          {answerImages.length ? <ul className="selected-images">{answerImages.map((image, index) => <li key={`${image.name}-${index}`}>Page {index + 1}: {image.name}</li>)}</ul> : null}</> : <p className="assessment-hint"><strong>AI marking is off.</strong> Use the worked exemplar and marking points to check this answer. A Parent can enable optional AI marking from the Parent dashboard.</p>}
         {markingError ? <p className="error" role="alert">{markingError}</p> : null}
-        {recordResults && revision.automaticMarkingAvailable ? <button disabled={marking || (!writtenAnswer.trim() && !answerImages.length)} onClick={() => void markWritten()} type="button">{marking ? 'Reading and marking…' : writtenMark ? 'Mark automatically again' : 'Mark automatically'}</button> : recordResults ? <p className="assessment-hint">One-tap marking is not connected. Use the free direct Gemini option below—no API key is needed.</p> : <p className="assessment-hint">Sign in as the student to save feedback to progress.</p>}
-        <button className="secondary" onClick={() => { setExternalMarkingOpen((open) => !open); setExternalError(''); setPromptCopied(false) }} type="button">{externalMarkingOpen ? 'Hide Gemini instructions' : 'Mark with Gemini — no API key'}</button>
-        {externalMarkingOpen ? <section className="external-marking" aria-labelledby="external-marking-heading"><h3 id="external-marking-heading">No-key Gemini marking</h3><p><strong>No setup or API key is required.</strong></p><section className="share-marking"><h4>Fastest on a phone</h4><ol><li>Take or choose the answer photographs above.</li><li>Select <strong>Share photo and prompt</strong>, then choose Gemini from the phone’s share sheet.</li><li>Send the shared message in Gemini. Copy its complete JSON reply and paste it below.</li></ol><button disabled={!answerImages.length && !writtenAnswer.trim()} onClick={() => void shareWithGemini()} type="button">Share {answerImages.length ? `${answerImages.length} photo${answerImages.length === 1 ? '' : 's'}` : 'typed answer'} and prompt</button>{!answerImages.length && !writtenAnswer.trim() ? <p className="assessment-hint">Add a typed answer or photograph first.</p> : null}{shareStatus ? <p className="success" role="status">{shareStatus}</p> : null}<p className="security-note">The photographs stay on this device until you choose an app from the share sheet.</p></section><div className="answer-divider"><span>manual fallback</span></div><ol><li>Select <strong>Copy marking prompt</strong>.</li><li>Open Gemini, paste the prompt and attach the photographs there.</li><li>Copy Gemini’s entire JSON reply and paste it below.</li></ol><p className="assessment-hint">The QR only moves this question to your phone. Gemini’s own account and usage limits apply.</p><div className="external-marking-actions"><button className="secondary" onClick={() => void copyExternalPrompt()} type="button">{promptCopied ? 'Prompt copied — now open Gemini' : 'Copy marking prompt'}</button><a className="button-link" href="https://gemini.google.com/app" rel="noreferrer" target="_blank">Open Gemini ↗</a></div><label className="written-answer-label">Prepared prompt<textarea onFocus={(event) => event.currentTarget.select()} readOnly rows={8} value={externalPrompt} /></label><label className="written-answer-label">Paste Gemini’s complete JSON reply<textarea onChange={(event) => setExternalResult(event.target.value)} placeholder={'Paste the reply beginning with {"estimatedMark": …}'} rows={7} value={externalResult} /></label>{externalError ? <p className="error" role="alert">{externalError}</p> : null}<button disabled={!externalResult.trim()} onClick={importExternalResult} type="button">Import feedback</button></section> : null}
-        {writtenMark ? <div className="written-feedback" aria-live="polite"><div className="result-hero"><div><strong>{writtenMark.estimatedMark}/{writtenMark.maximumMark}</strong><span>estimated</span></div><div><h2>{writtenMark.summary}</h2><p>Marking confidence: {writtenMark.confidence}</p></div></div><div className="feedback-columns"><section><h3>What worked</h3><ul>{writtenMark.strengths.map((strength, index) => <li key={`${strength.point}-${index}`}><strong>{strength.point}</strong>{strength.evidence ? <span> — “{strength.evidence}”</span> : null}</li>)}</ul></section><section><h3>How to improve</h3><ul>{writtenMark.improvements.map((item) => <li key={item}>{item}</li>)}</ul></section></div><p className="next-step"><strong>Your next step:</strong> {writtenMark.nextStep}</p><details><summary>Check what the app read</summary><p className="transcription">{writtenMark.transcription}</p><small>If this is wrong, correct the answer above and choose “Mark corrected answer”.</small></details>{writtenQuestion.canUpdateMastery && writtenMark.confidence !== 'low' ? <button disabled={saving || writtenSaved} onClick={() => void saveWrittenResult()} type="button">{writtenSaved ? 'Estimated result saved' : saving ? 'Saving…' : 'Save estimated result'}</button> : <p className="assessment-hint">This feedback is not being added to mastery{writtenMark.confidence === 'low' ? ' because the marking confidence is low' : ''}.</p>}</div> : null}
+        {recordResults && revision.aiMarkingAllowed ? <div className="privacy-choice"><p><strong>Before using AI marking:</strong> your typed answer or selected photographs will be sent to the chosen AI provider. Remove names, school details and unrelated personal information. Supported photographs are resized and re-encoded to remove embedded metadata before transfer. Provider account, retention and deletion terms apply.</p><label className="check-label"><input checked={privacyConfirmed} onChange={(event) => setPrivacyConfirmed(event.target.checked)} type="checkbox" /> I understand and want to use optional AI marking for this answer.</label><p>You can skip AI and use the worked exemplar and marking points instead.</p></div> : null}
+        {recordResults && revision.automaticMarkingAvailable ? <button disabled={!privacyConfirmed || marking || (!writtenAnswer.trim() && !answerImages.length)} onClick={() => void markWritten()} type="button">{marking ? 'Reading and marking…' : writtenMark ? 'Mark automatically again' : 'Mark automatically'}</button> : recordResults && revision.aiMarkingAllowed ? <p className="assessment-hint">One-tap marking is not connected. You can self-check above or optionally use the direct Gemini route below.</p> : !recordResults ? <p className="assessment-hint">Sign in as the student to save feedback to progress.</p> : null}
+        {revision.aiMarkingAllowed ? <button className="secondary" onClick={() => { setExternalMarkingOpen((open) => !open); setExternalError(''); setPromptCopied(false) }} type="button">{externalMarkingOpen ? 'Hide Gemini instructions' : 'Mark with Gemini — no API key'}</button> : null}
+        {externalMarkingOpen ? <section className="external-marking" aria-labelledby="external-marking-heading"><h3 id="external-marking-heading">Optional Gemini marking</h3><p><strong>No setup or API key is required, but this sends the answer outside this app.</strong></p><section className="share-marking"><h4>Fastest on a phone</h4><ol><li>Remove any names, school details or unrelated personal information.</li><li>Select <strong>Share photo and prompt</strong>, then choose Gemini from the phone’s share sheet.</li><li>Send the shared message in Gemini. Copy its complete JSON reply and paste it below.</li></ol><button disabled={!privacyConfirmed || (!answerImages.length && !writtenAnswer.trim())} onClick={() => void shareWithGemini()} type="button">Share {answerImages.length ? `${answerImages.length} photo${answerImages.length === 1 ? '' : 's'}` : 'typed answer'} and prompt</button>{!privacyConfirmed ? <p className="assessment-hint">Confirm the AI privacy choice above before sharing.</p> : null}{!answerImages.length && !writtenAnswer.trim() ? <p className="assessment-hint">Add a typed answer or photograph first.</p> : null}{shareStatus ? <p className="success" role="status">{shareStatus}</p> : null}<p className="security-note">The photographs stay on this device until you choose an external app from the share sheet.</p></section><div className="answer-divider"><span>manual fallback</span></div><ol><li>Select <strong>Copy marking prompt</strong>.</li><li>Open Gemini, paste the prompt and attach the photographs there.</li><li>Copy Gemini’s entire JSON reply and paste it below.</li></ol><p className="assessment-hint">Gemini’s own account, retention and deletion terms apply.</p><div className="external-marking-actions"><button className="secondary" disabled={!privacyConfirmed} onClick={() => void copyExternalPrompt()} type="button">{promptCopied ? 'Prompt copied — now open Gemini' : 'Copy marking prompt'}</button>{privacyConfirmed ? <a className="button-link" href="https://gemini.google.com/app" rel="noreferrer" target="_blank">Open Gemini ↗</a> : null}</div><label className="written-answer-label">Prepared prompt<textarea onFocus={(event) => event.currentTarget.select()} readOnly rows={8} value={externalPrompt} /></label><label className="written-answer-label">Paste Gemini’s complete JSON reply<textarea onChange={(event) => setExternalResult(event.target.value)} placeholder={'Paste the reply beginning with {"estimatedMark": …}'} rows={7} value={externalResult} /></label>{externalError ? <p className="error" role="alert">{externalError}</p> : null}<button disabled={!externalResult.trim()} onClick={importExternalResult} type="button">Import feedback</button></section> : null}
+        {writtenMark ? <div className="written-feedback" aria-live="polite"><div className="result-hero"><div><strong>{writtenMark.estimatedMark}/{writtenMark.maximumMark}</strong><span>estimated</span></div><div><h2>{writtenMark.summary}</h2><p>Marking confidence: {writtenMark.confidence}</p></div></div><div className="feedback-columns"><section><h3>What worked</h3><ul>{writtenMark.strengths.map((strength, index) => <li key={`${strength.point}-${index}`}><strong>{strength.point}</strong>{strength.evidence ? <span> — “{strength.evidence}”</span> : null}</li>)}</ul></section><section><h3>How to improve</h3><ul>{writtenMark.improvements.map((item) => <li key={item}>{item}</li>)}</ul></section></div><p className="next-step"><strong>Your next step:</strong> {writtenMark.nextStep}</p><details><summary>Check what the app read</summary><p className="transcription">{writtenMark.transcription}</p><small>If this is wrong, correct the answer above and choose “Mark corrected answer”.</small></details>{writtenQuestion.canUpdateMastery && writtenMark.confidence !== 'low' && writtenMark.evidenceToken ? <button disabled={saving || writtenSaved} onClick={() => void saveWrittenResult()} type="button">{writtenSaved ? 'Estimated result saved' : saving ? 'Saving…' : 'Save estimated result'}</button> : <p className="assessment-hint">This feedback is not being added to mastery{writtenMark.confidence === 'low' ? ' because the marking confidence is low' : markingRoute === 'external' ? ' because an externally pasted result cannot be verified by the app' : ''}.</p>}</div> : null}
       </section> : null}
-      {revision.testQuestions.length ? <><h2>Quick knowledge check</h2><p className="lesson-lead">These reviewed questions are marked automatically{recordResults ? ' and saved to progress' : ''}.</p><div className="auto-test">{revision.testQuestions.map((question, index) => <fieldset key={question.id}><legend><span>Question {index + 1}</span>{question.question} <small>{question.marks} {question.marks === 1 ? 'mark' : 'marks'}</small></legend>{question.options.map((option, optionIndex) => <label className="answer-option" key={option}><input checked={answers[question.id] === optionIndex} name={question.id} onChange={() => setAnswers((state) => ({ ...state, [question.id]: optionIndex }))} type="radio" />{option}</label>)}</fieldset>)}</div><div className="lesson-next"><span>{Object.keys(answers).length} of {revision.testQuestions.length} answered</span><button disabled={Object.keys(answers).length !== revision.testQuestions.length} onClick={() => void finishTest()} type="button">Finish and mark check</button></div></> : <div className="lesson-next"><span>No generic quiz has been substituted for this topic.</span><button onClick={onBack} type="button">Finish session</button></div>}
+      {revision.testQuestions.length ? <><h2>Quick knowledge check</h2><p className="lesson-lead">These original app questions are marked automatically{recordResults ? ' and saved to progress' : ''}. They are not past-paper questions.</p><div className="auto-test">{revision.testQuestions.map((question, index) => <fieldset key={question.id}><legend><span>Question {index + 1}</span>{question.question} <small>{question.marks} {question.marks === 1 ? 'mark' : 'marks'}</small></legend>{question.options.map((option, optionIndex) => <label className="answer-option" key={option}><input checked={answers[question.id] === optionIndex} name={question.id} onChange={() => setAnswers((state) => ({ ...state, [question.id]: optionIndex }))} type="radio" />{option}</label>)}</fieldset>)}</div><div className="lesson-next"><span>{Object.keys(answers).length} of {revision.testQuestions.length} answered</span><button disabled={Object.keys(answers).length !== revision.testQuestions.length} onClick={() => void finishTest()} type="button">Finish and mark check</button></div></> : <div className="lesson-next"><span>No generic quiz has been substituted for this topic.</span><button onClick={onBack} type="button">Finish session</button></div>}
     </div> : null}
 
     {stage === 'results' && result ? <div className="lesson-page card">
-      <p className="eyebrow">Test complete</p><div className="result-hero"><div><strong>{result.score}/{result.maximum}</strong><span>{Math.round(result.score / result.maximum * 100)}%</span></div><div><h2>{result.score / result.maximum >= .75 ? 'Strong result' : result.score / result.maximum >= .5 ? 'Good start—review the feedback' : 'Review the examples and try again'}</h2><p>{recordResults ? (saving ? 'Saving this result to your progress…' : 'This result has been saved to mastery and will influence your revision plan.') : 'This is a read-only preview, so the result has not been added to Student progress.'}</p></div></div>
+      <p className="eyebrow">Test complete</p><div className="result-hero"><div><strong>{result.score}/{result.maximum}</strong><span>{Math.round(result.score / result.maximum * 100)}%</span></div><div><h2>{result.score / result.maximum >= .75 ? 'Strong result' : result.score / result.maximum >= .5 ? 'Good start—review the feedback' : 'Review the examples and try again'}</h2><p>{!recordResults ? 'This is a read-only preview, so the result has not been added to Student progress.' : resultSaveState === 'saving' ? 'Saving this result to your progress…' : resultSaveState === 'saved' ? 'This result has been saved and will influence your revision plan.' : 'Your result is calculated, but it has not been saved yet.'}</p>{resultSaveState === 'failed' ? <button onClick={() => void saveKnowledgeCheck(result.score)} type="button">Retry saving result</button> : null}</div></div>
       <h2>Answer review</h2><div className="answer-review">{revision.testQuestions.map((question, index) => { const correct = answers[question.id] === question.correctOption; return <article className={correct ? 'answer-review--correct' : 'answer-review--wrong'} key={question.id}><strong>Question {index + 1}: {correct ? 'Correct' : 'Not quite'}</strong><p>Your answer: {question.options[answers[question.id] ?? -1] ?? 'No answer'}</p>{!correct ? <p>Correct answer: {question.options[question.correctOption]}</p> : null}<small>{question.explanation}</small></article> })}</div>
       <h2>Continue with this exact topic</h2>{revision.resources.length ? <div className="resource-grid">{revision.resources.map((resource) => <a className="resource-card" href={resource.url} key={resource.id} rel="noreferrer" target="_blank"><span>{resource.provider} · {resource.resourceType.replace('_', ' ')}</span><strong>{resource.title}</strong><small>{resource.description}</small></a>)}</div> : <p>No direct topic resources have been added yet.</p>}
       <div className="lesson-next"><button className="secondary" onClick={() => { setAnswers({}); setResult(null); setStage('overview') }} type="button">Repeat session</button><button onClick={onBack} type="button">Finish session</button></div>

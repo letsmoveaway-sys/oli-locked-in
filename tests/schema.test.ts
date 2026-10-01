@@ -69,4 +69,44 @@ describe('initial migration', () => {
     expect(migration).toContain('marking_confidence')
     expect(migration).toContain('feedback_json')
   })
+
+  it('configures Geography, Business and Design and Technology without inventing school options', () => {
+    const migration = readFileSync('database/migrations/0015_confirm_geography_business_dt.sql', 'utf8')
+    expect(migration).toContain("specification_code = '8035'")
+    expect(migration).toContain("specification_code = '1BS0'")
+    expect(migration).toContain("specification_code = '8552'")
+    expect(migration).toContain("'res-geo-bbc'")
+    expect(migration).toContain("'res-geo-internet-geography'")
+    expect(migration).toContain("'option_required'")
+    expect(migration).toContain("'$.specialistMaterial', 'TBC'")
+  })
+
+  it('stores sourced calendar events and content review provenance', () => {
+    const exams = readFileSync('database/migrations/0018_exam_event_kind.sql', 'utf8')
+    const content = readFileSync('database/migrations/0019_content_provenance.sql', 'utf8')
+    expect(exams).toContain("'school_assessment'")
+    expect(content).toContain('content_version')
+    expect(content).toContain('subject_expert_checked')
+    expect(content).toContain('reviewed_at')
+  })
+
+  it('makes AI marking Parent-controlled and session completion recoverable', () => {
+    const ai = readFileSync('database/migrations/0020_parent_ai_control.sql', 'utf8')
+    const completion = readFileSync('database/migrations/0021_idempotent_completion.sql', 'utf8')
+    expect(ai).toContain('ai_marking_enabled')
+    expect(completion).toContain('session_completion_attempts')
+    expect(completion).toContain('idx_mastery_history_operation')
+  })
+
+  it('stores guided course choices, daily study blocks and AI audit fields', () => {
+    const courses = readFileSync('database/migrations/0022_guided_course_options.sql', 'utf8')
+    const studyBlocks = readFileSync('database/migrations/0023_daily_session_lengths.sql', 'utf8')
+    const audit = readFileSync('database/migrations/0024_ai_marking_audit.sql', 'utf8')
+    expect(courses).toContain('thematicStudy')
+    expect(courses).toContain('modernDepthStudy')
+    expect(courses).toContain('neaStage')
+    expect(studyBlocks).toContain('session_minutes')
+    expect(audit).toContain('marking_model')
+    expect(audit).toContain('rubric_version')
+  })
 })

@@ -1,4 +1,5 @@
 import type { RagStatus } from './mastery'
+import { productLocalDateTimeToIso } from '../../utils/dateTime'
 
 export interface PlannerTopic {
   id: string
@@ -35,6 +36,7 @@ export interface PlannerAvailability {
   weekday: number
   availableMinutes: number
   startTime: string | null
+  sessionMinutes?: number
 }
 
 export interface PlannerException {
@@ -61,6 +63,7 @@ export interface PlannedSession {
   subjectName: string
   topicName: string
   scheduledAt: string
+  startedAt?: string | null
   plannedMinutes: number
   sessionType: string
   status: string
@@ -169,8 +172,8 @@ function exceptionFor(date: string, exceptions: PlannerException[]): PlannerExce
 function sessionTime(date: string, startTime: string | null, index: number, duration: number): string {
   const [hour = 17, minute = 0] = (startTime ?? '17:00').split(':').map(Number)
   const value = new Date(`${date}T00:00:00.000Z`)
-  value.setUTCHours(hour, minute + index * duration)
-  return value.toISOString()
+  value.setUTCHours(hour, minute + index * (duration + 10))
+  return productLocalDateTimeToIso(value.toISOString().slice(0, 16))
 }
 
 export function generateRevisionPlan(context: PlannerContext, horizonDays = 14): PlannedSession[] {
@@ -208,6 +211,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
   for (let dayOffset = 0; dayOffset < horizonDays; dayOffset += 1) {
     const date = addDays(context.today, dayOffset)
     const template = context.availability.find((item) => item.weekday === weekday(date))
+    const sessionMinutes = template?.sessionMinutes ?? context.defaultSessionMinutes
     const exception = exceptionFor(date, context.exceptions)
     let minutes = exception ? exception.availableMinutes : template?.availableMinutes ?? 0
     const existingToday = output.filter((session) => dateOnly(session.scheduledAt) === date)
@@ -221,7 +225,8 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
         subjectId: tutor.subjectId,
         subjectName: tutor.subjectName,
         topicName: `${tutor.subjectName} tutor`,
-        scheduledAt: `${date}T${tutor.startTime}:00.000Z`,
+        scheduledAt: productLocalDateTimeToIso(`${date}T${tutor.startTime}`),
+        startedAt: null,
         plannedMinutes: tutor.durationMinutes,
         sessionType: 'Tutor session',
         status: 'tutor',
@@ -234,7 +239,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
       minutes -= tutor.durationMinutes
     }
 
-    if (minutes < context.defaultSessionMinutes) continue
+    if (minutes < sessionMinutes) continue
     const subjectCounts = new Map<string, number>()
     const topicIdsToday = new Set<string>()
     for (const session of output.filter((item) => dateOnly(item.scheduledAt) === date)) {
@@ -242,7 +247,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
       if (session.topicId) topicIdsToday.add(session.topicId)
     }
     let slotIndex = 0
-    while (minutes >= context.defaultSessionMinutes) {
+    while (minutes >= sessionMinutes) {
       const tutorSubjects = new Set(tutorsToday.map((tutor) => tutor.subjectId))
       const candidates = context.topics
         .filter((topic) => topic.active && (workload.get(topic.id) ?? 0) > 0.05)
@@ -288,7 +293,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
         subjectId: reviewTopic.subjectId,
         subjectName: reviewTopic.subjectName,
         topicName: reviewTopic.name,
-        plannedMinutes: Math.min(8, Math.max(5, context.defaultSessionMinutes - 20)),
+        plannedMinutes: Math.min(8, Math.max(5, sessionMinutes - 20)),
         reason: `Spaced retrieval from ${Math.max(1, Math.floor(daysBetween(reviewTopic.lastRevisedAt!, date)))} days ago`,
       }] : []
 
@@ -301,8 +306,9 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
         subjectId: selected.topic.subjectId,
         subjectName: selected.topic.subjectName,
         topicName: selected.topic.name,
-        scheduledAt: sessionTime(date, template?.startTime ?? null, slotIndex, context.defaultSessionMinutes),
-        plannedMinutes: context.defaultSessionMinutes,
+        scheduledAt: sessionTime(date, template?.startTime ?? null, slotIndex, sessionMinutes),
+        startedAt: null,
+        plannedMinutes: sessionMinutes,
         sessionType: reviewItems.length ? 'Learning + spaced review' : primaryIsDueReview ? 'Spaced retrieval review' : 'Focused learning',
         status: 'planned',
         plannerReason: reviewItems.length
@@ -325,7 +331,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
       }
       previousTopicId = selected.topic.id
       previousSubjectId = selected.topic.subjectId
-      minutes -= context.defaultSessionMinutes
+      minutes -= sessionMinutes
       slotIndex += 1
     }
   }

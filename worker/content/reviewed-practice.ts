@@ -1,3 +1,5 @@
+import { confirmedCoursePracticeFor } from './confirmed-course-practice'
+
 export interface ReviewedPractice {
   question: string
   hint: string
@@ -103,5 +105,5 @@ export const REVIEWED_PRACTICE: Record<string, ReviewedPractice> = {
 }
 
 export function reviewedPracticeFor(topicId: string): ReviewedPractice | null {
-  return REVIEWED_PRACTICE[topicId] ?? null
+  return REVIEWED_PRACTICE[topicId] ?? confirmedCoursePracticeFor(topicId)
 }

@@ -10,6 +10,8 @@ export interface WrittenMark {
   strengths: Array<{ point: string; evidence: string }>
   improvements: string[]
   nextStep: string
+  modelVersion: string
+  rubricVersion: string
 }
 
 interface GeminiCandidate {
@@ -114,5 +116,7 @@ export async function markWrittenAnswer(
     strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 5).filter((item): item is { point: string; evidence: string } => Boolean(item && typeof item.point === 'string' && typeof item.evidence === 'string')) : [],
     improvements: Array.isArray(parsed.improvements) ? parsed.improvements.slice(0, 5).filter((item): item is string => typeof item === 'string') : [],
     nextStep: typeof parsed.nextStep === 'string' ? parsed.nextStep.slice(0, 1_000) : 'Use the marking points to improve one part of the answer.',
+    modelVersion: model,
+    rubricVersion: 'gcse-formative-v1',
   }
 }

@@ -19,7 +19,8 @@ const revision: TopicRevision = {
   practiceQuestions: [{ question: 'Solve 2x = 8.', hint: 'Divide by 2.', answer: 'x = 4', marks: 2 }], resources: [],
   testQuestions: [{ id: 'q1', question: 'Solve 2x = 8.', options: ['2', '4', '6'], correctOption: 1, explanation: 'Divide both sides by 2.', marks: 2 }],
   writtenQuestions: [{ id: 'written-1', question: 'Solve 2x = 8 and show your method.', marks: 2, suggestedMinutes: 3, expectedLength: 'One or two precise sentences', hint: 'Divide by 2.', markingPoints: ['Show a valid method', 'Give the correct answer'], exemplar: '2x = 8, so x = 4.', exemplarAnnotations: [{ label: 'Valid method', explanation: 'Both sides are divided by two.' }], canUpdateMastery: true }],
-  assessmentAvailable: true,
+  assessmentAvailable: true, aiMarkingAllowed: true,
+  contentProvenance: { version: 'test', author: 'Test fixture', reviewer: null, reviewStatus: 'editorial_checked', reviewedAt: '2026-09-30', sourceUrl: 'https://example.com/spec' },
 }
 
 describe('revision learning content', () => {
@@ -63,7 +64,7 @@ describe('revision learning content', () => {
   })
 
   it('creates a usable original activity for topics without a bespoke lesson', () => {
-    const fallback = createFallbackLesson({ id: 'geo-rivers', name: 'River landscapes', description: 'River processes.', component: 'Paper 1', subject_id: 'subject-geography', subject_name: 'Geography' })
+    const fallback = createFallbackLesson({ id: 'geo-unreviewed-example', name: 'River landscapes', description: 'River processes.', component: 'Paper 1', subject_id: 'subject-geography', subject_name: 'Geography' })
     expect(fallback.practiceQuestions[0]?.question).toContain('River landscapes')
     expect(fallback.bespoke).toBe(false)
     expect(fallback.testQuestions).toEqual([])
@@ -96,7 +97,9 @@ describe('revision learning content', () => {
     render(<LearningSession onBack={() => undefined} onResult={vi.fn().mockResolvedValue(undefined)} onReviseNow={vi.fn().mockResolvedValue(undefined)} recordResults revision={revision} topic={{ topicId: 'equations', topicName: 'Equations', description: '', subjectId: 'subject-mathematics', subjectName: 'Mathematics', component: 'All papers', masteryScore: null, confidence: null, ragStatus: 'grey', lastRevisedAt: null, totalSessions: 0, totalMinutes: 0, nextReviewAt: null, latestAssessment: null, notes: '', masteryHistory: [], assessments: [], sessions: [] }} />)
     fireEvent.click(screen.getByRole('button', { name: '3. Test yourself' }))
     fireEvent.click(screen.getByRole('button', { name: /Mark with Gemini.*no API key/ }))
-    expect(screen.getByRole('heading', { name: /No-key Gemini marking/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Optional Gemini marking/ })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Open Gemini/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText(/I understand and want to use optional AI marking/))
     expect(screen.getByRole('link', { name: /Open Gemini/ })).toHaveAttribute('href', 'https://gemini.google.com/app')
     expect(screen.getByDisplayValue(/Return only valid JSON/)).toBeInTheDocument()
   })
