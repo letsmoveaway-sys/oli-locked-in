@@ -16,6 +16,10 @@ const topic: TopicProgress = {
   topicId: 'topic-1', topicName: 'Algebra', description: 'Algebra skills.', subjectId: 'maths', subjectName: 'Mathematics',
   component: 'Paper 1', masteryScore: 42, confidence: 'struggling', ragStatus: 'red', lastRevisedAt: null,
   totalSessions: 1, totalMinutes: 35, nextReviewAt: null, latestAssessment: 40,
+  targetSessions: 3, remainingSessions: 2, coverageItems: [
+    { id: 'algebra-expand', name: 'Expand brackets', completed: true },
+    { id: 'algebra-factorise', name: 'Factorise expressions', completed: false },
+  ],
 }
 const subject: CourseSubject = {
   id: 'maths', name: 'Mathematics', examBoard: 'TBC', specificationCode: null, active: true, tier: 'higher',
@@ -23,37 +27,36 @@ const subject: CourseSubject = {
 }
 
 describe('Phase 5 student experience', () => {
-  it('shows today’s session and opens the completion journey', () => {
-    render(<TodayDashboard sessions={[session]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onQuickRevision={vi.fn()} onReviewTopic={vi.fn()} onStart={vi.fn()} onViewTopic={vi.fn()} onOpenWeek={vi.fn()} />)
-    expect(screen.getByText('Your revision for today')).toBeInTheDocument()
+  it('shows today’s scheduled topic and opens the coverage journey', () => {
+    render(<TodayDashboard sessions={[session]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onViewTopic={vi.fn()} onOpenWeek={vi.fn()} />)
+    expect(screen.getByText('Today’s revision topics')).toBeInTheDocument()
     expect(screen.getByText('Why this is here: Low mastery and an upcoming review.')).toBeInTheDocument()
-    expect(screen.getByText('Memory review from earlier learning')).toBeInTheDocument()
-    expect(screen.getByText('Cell biology')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Other options'))
-    fireEvent.click(screen.getByRole('button', { name: 'Log work done elsewhere' }))
-    expect(screen.getByText('Finish revision session')).toBeInTheDocument()
-    expect(screen.getByLabelText('Actual time spent (minutes)')).toHaveValue(35)
+    expect(screen.getByText(/1\/2/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Complete and mark coverage' }))
+    expect(screen.getByText('What did you cover in this session?')).toBeInTheDocument()
+    expect(screen.getByLabelText('Factorise expressions')).toBeInTheDocument()
   })
 
   it('renders the seven-day planner with move controls', () => {
-    render(<WeeklyPlanner sessions={[session]} topics={[topic]} onComplete={vi.fn()} onMove={vi.fn()} onReplan={vi.fn()} onReviewTopic={vi.fn()} onViewTopic={vi.fn()} />)
+    render(<WeeklyPlanner sessions={[session]} topics={[topic]} onComplete={vi.fn()} onMove={vi.fn()} onReplan={vi.fn()} onViewTopic={vi.fn()} />)
     expect(screen.getAllByText(/Rest \/ unavailable|Mathematics/).length).toBeGreaterThanOrEqual(7)
     expect(screen.getByRole('button', { name: 'Postpone / swap' })).toBeInTheDocument()
   })
 
-  it('reopens completed session content through a separate review action', () => {
-    const onReviewTopic = vi.fn()
-    render(<TodayDashboard sessions={[{ ...session, status: 'completed' }]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onQuickRevision={vi.fn()} onReviewTopic={onReviewTopic} onStart={vi.fn()} onViewTopic={vi.fn()} onOpenWeek={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Review content' }))
-    expect(onReviewTopic).toHaveBeenCalledWith('topic-1')
+  it('keeps coverage and useful materials available after completion', () => {
+    const onViewTopic = vi.fn()
+    render(<TodayDashboard sessions={[{ ...session, status: 'completed' }]} topics={[topic]} onComplete={vi.fn()} onCannotDo={vi.fn()} onViewTopic={onViewTopic} onOpenWeek={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'View checklist and resources' }))
+    expect(onViewTopic).toHaveBeenCalledWith('topic-1')
   })
 
-  it('summarises subject mastery and exposes topic detail navigation', () => {
+  it('summarises subject coverage and exposes topic detail navigation', () => {
     const onViewTopic = vi.fn()
     render(<SubjectBrowser subjects={[subject]} topics={[topic]} sessions={[session]} onViewTopic={onViewTopic} />)
     fireEvent.click(screen.getByText('Mathematics'))
-    expect(screen.getAllByText('42%')).toHaveLength(2)
-    fireEvent.click(screen.getByRole('button', { name: /Algebra/ }))
+    const topicButton = screen.getByRole('button', { name: /Algebra.*1.*2 coverage points/ })
+    expect(topicButton).toBeInTheDocument()
+    fireEvent.click(topicButton)
     expect(onViewTopic).toHaveBeenCalledWith('topic-1')
   })
 })

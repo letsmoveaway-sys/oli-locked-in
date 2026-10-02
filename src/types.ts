@@ -67,6 +67,9 @@ export interface TopicProgress {
   totalMinutes: number
   nextReviewAt: string | null
   latestAssessment: number | null
+  targetSessions?: number
+  remainingSessions?: number
+  coverageItems?: Array<{ id: string; name: string; completed: boolean }>
 }
 
 export interface PlanSession {
@@ -95,18 +98,17 @@ export interface PlanSession {
 
 export interface WeeklyAvailability {
   weekday: number
-  availableMinutes: number
-  startTime: string | null
+  availableSlots?: number
+  /** Legacy fields retained while existing local data is migrated to slot counts. */
+  availableMinutes?: number
   sessionMinutes?: number
+  startTime?: string | null
 }
 
 export interface SessionCompletionInput {
   sessionId: string
-  actualMinutes: number
-  confidenceAfter: Confidence
-  assessmentPercentage: number | null
+  coveredItemIds: string[]
   notes: string
-  reviewResults: Array<{ topicId: string; percentage: number | null }>
 }
 
 export interface TopicDetail extends TopicProgress {
@@ -241,7 +243,7 @@ export interface Analytics {
     durationMinutes: number | null; examBoard: string; confirmed: boolean; source: string | null
     lastVerifiedAt: string | null; eventKind: 'final' | 'mock' | 'school_assessment'
   }>
-  exceptions: Array<{ startDatetime: string; endDatetime: string; reason: string; availableMinutes: number; protectsStreak: boolean }>
+  exceptions: Array<{ startDatetime: string; endDatetime: string; reason: string; availableSlots: number; protectsStreak: boolean }>
   gamification: {
     xp: number; level: number; levelProgress: number; weeklyGoalMinutes: number; weeklyCompletedMinutes: number; streak: number
     achievements: Array<{ id: string; name: string; description: string; unlocked: boolean }>

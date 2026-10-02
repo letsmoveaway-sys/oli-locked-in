@@ -19,7 +19,7 @@ interface Props {
   sessions: PlanSession[]
   subjects: CourseSubject[]
   editable: boolean
-  onException: (input: { startDatetime: string; endDatetime: string; reason: string; availableMinutes: number; protectStreak: boolean }) => Promise<void>
+  onException: (input: { startDatetime: string; endDatetime: string; reason: string; availableSlots: number; protectStreak: boolean }) => Promise<void>
   onExam: (input: ExamValues) => Promise<void>
 }
 
@@ -39,7 +39,7 @@ export function CalendarDashboard({ analytics, availability, sessions, subjects,
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
   const [reason, setReason] = useState('Illness')
-  const [minutes, setMinutes] = useState('0')
+  const [slots, setSlots] = useState('0')
   const [protect, setProtect] = useState(true)
   const [busy, setBusy] = useState(false)
   const [calendarError, setCalendarError] = useState('')
@@ -52,7 +52,7 @@ export function CalendarDashboard({ analytics, availability, sessions, subjects,
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setCalendarError('')
     try {
-      await onException({ startDatetime: productLocalDateTimeToIso(start), endDatetime: productLocalDateTimeToIso(end), reason, availableMinutes: Number(minutes), protectStreak: protect })
+      await onException({ startDatetime: productLocalDateTimeToIso(start), endDatetime: productLocalDateTimeToIso(end), reason, availableSlots: Number(slots), protectStreak: protect })
       setStart(''); setEnd('')
     } catch (caught) { setCalendarError(caught instanceof Error ? caught.message : 'Unable to save this exception.') }
     finally { setBusy(false) }
@@ -93,8 +93,8 @@ export function CalendarDashboard({ analytics, availability, sessions, subjects,
   return <section aria-labelledby="calendar-heading">
     <div className="section-heading"><div><p className="eyebrow">Calendar and availability</p><h2 id="calendar-heading">Time commitments</h2><p>Confirmed exams and mocks change what the planner prioritises.</p></div></div>
     <div className="calendar-grid">
-      <article className="card analytics-card"><h3>Standard week</h3><div className="availability-summary">{dayNames.map((day, index) => { const item = availability.find((value) => value.weekday === index + 1); return <div key={day}><strong>{day.slice(0, 3)}</strong><span>{item?.availableMinutes ?? 0} min total</span><small>{item?.startTime ?? 'Unavailable'}{item?.sessionMinutes ? ` · ${item.sessionMinutes} min blocks` : ''}</small></div> })}</div></article>
-      <article className="card analytics-card"><h3>Tutors, assessments and exams</h3><ul className="simple-list">{tutors.map((item) => <li key={item.id}><strong>{item.subjectName} tutor</strong><span>{formatProductDate(item.scheduledAt, { weekday: 'long', day: 'numeric', month: 'short' })} · {item.plannedMinutes} min</span></li>)}{analytics.exams.map((item) => <li key={item.id}><strong>{item.subjectName} · {item.component}</strong><span>{item.eventKind === 'final' ? 'Final exam' : item.eventKind === 'mock' ? 'Mock' : 'School assessment'} · {formatProductDate(item.examDatetime, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })} at {formatProductTime(item.examDatetime)}{item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}</span><small>{item.confirmed ? 'Confirmed' : 'Provisional'}{item.source ? <> · Source: {/^https:\/\//.test(item.source) ? <a href={item.source} rel="noreferrer" target="_blank">open source</a> : item.source}</> : ''}</small>{editable ? <button className="text-button" onClick={() => editExam(item)} type="button">Edit or confirm</button> : null}</li>)}</ul>{!tutors.length && !analytics.exams.length ? <p>No upcoming tutors, assessments or exams have been added.</p> : null}</article>
+      <article className="card analytics-card"><h3>Standard week</h3><div className="availability-summary">{dayNames.map((day, index) => { const item = availability.find((value) => value.weekday === index + 1); return <div key={day}><strong>{day.slice(0, 3)}</strong><span>{item?.availableSlots ?? 0} revision slots</span></div> })}</div></article>
+      <article className="card analytics-card"><h3>Tutors, assessments and exams</h3><ul className="simple-list">{tutors.map((item) => <li key={item.id}><strong>{item.subjectName} tutor</strong><span>{formatProductDate(item.scheduledAt, { weekday: 'long', day: 'numeric', month: 'short' })}</span></li>)}{analytics.exams.map((item) => <li key={item.id}><strong>{item.subjectName} · {item.component}</strong><span>{item.eventKind === 'final' ? 'Final exam' : item.eventKind === 'mock' ? 'Mock' : 'School assessment'} · {formatProductDate(item.examDatetime, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })} at {formatProductTime(item.examDatetime)}{item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}</span><small>{item.confirmed ? 'Confirmed' : 'Provisional'}{item.source ? <> · Source: {/^https:\/\//.test(item.source) ? <a href={item.source} rel="noreferrer" target="_blank">open source</a> : item.source}</> : ''}</small>{editable ? <button className="text-button" onClick={() => editExam(item)} type="button">Edit or confirm</button> : null}</li>)}</ul>{!tutors.length && !analytics.exams.length ? <p>No upcoming tutors, assessments or exams have been added.</p> : null}</article>
     </div>
     {editable ? <form className="card exam-form" id="exam-editor" onSubmit={submitExam}>
       <div className="card-heading"><div><p className="eyebrow">Dates that drive the plan</p><h3>{exam.id ? 'Edit or confirm a date' : 'Add an exam, mock or assessment'}</h3></div>{exam.id ? <button className="secondary" onClick={() => setExam(emptyExam(activeSubjects[0]?.id))} type="button">Add another</button> : null}</div>
@@ -111,8 +111,8 @@ export function CalendarDashboard({ analytics, availability, sessions, subjects,
       <button disabled={examBusy} type="submit">{examBusy ? 'Saving…' : exam.id ? 'Save date and replan' : 'Add date and replan'}</button>
     </form> : null}
     <div className="calendar-grid">
-      <article className="card analytics-card"><h3>Exceptions</h3>{analytics.exceptions.length ? <ul className="simple-list">{analytics.exceptions.map((item) => <li key={`${item.startDatetime}-${item.reason}`}><strong>{item.reason}</strong><span>{formatProductDate(item.startDatetime, { day: 'numeric', month: 'short' })} – {formatProductDate(item.endDatetime, { day: 'numeric', month: 'short' })} · {item.availableMinutes} min available{item.protectsStreak ? ' · streak protected' : ''}</span></li>)}</ul> : <p>No upcoming exceptions.</p>}</article>
-      {editable ? <form className="card exception-form" onSubmit={submit}><h3>Add holiday, event or illness</h3><div className="score-fields"><label>Starts<input onChange={(event) => setStart(event.target.value)} required type="datetime-local" value={start} /></label><span>to</span><label>Ends<input onChange={(event) => setEnd(event.target.value)} required type="datetime-local" value={end} /></label></div><label>Reason<input maxLength={100} onChange={(event) => setReason(event.target.value)} required value={reason} /></label><label>Available minutes<input min="0" max="360" onChange={(event) => setMinutes(event.target.value)} required type="number" value={minutes} /></label><label className="check-label"><input checked={protect} onChange={(event) => setProtect(event.target.checked)} type="checkbox" /> Protect the activity streak</label>{calendarError ? <p className="error" role="alert">{calendarError}</p> : null}<button disabled={busy} type="submit">Save exception and replan</button></form> : null}
+      <article className="card analytics-card"><h3>Exceptions</h3>{analytics.exceptions.length ? <ul className="simple-list">{analytics.exceptions.map((item) => <li key={`${item.startDatetime}-${item.reason}`}><strong>{item.reason}</strong><span>{formatProductDate(item.startDatetime, { day: 'numeric', month: 'short' })} – {formatProductDate(item.endDatetime, { day: 'numeric', month: 'short' })} · {item.availableSlots} slots available{item.protectsStreak ? ' · streak protected' : ''}</span></li>)}</ul> : <p>No upcoming exceptions.</p>}</article>
+      {editable ? <form className="card exception-form" onSubmit={submit}><h3>Add holiday, event or illness</h3><div className="score-fields"><label>Starts<input onChange={(event) => setStart(event.target.value)} required type="datetime-local" value={start} /></label><span>to</span><label>Ends<input onChange={(event) => setEnd(event.target.value)} required type="datetime-local" value={end} /></label></div><label>Reason<input maxLength={100} onChange={(event) => setReason(event.target.value)} required value={reason} /></label><label>Available revision slots<input min="0" max="12" onChange={(event) => setSlots(event.target.value)} required type="number" value={slots} /></label><label className="check-label"><input checked={protect} onChange={(event) => setProtect(event.target.checked)} type="checkbox" /> Protect the activity streak</label>{calendarError ? <p className="error" role="alert">{calendarError}</p> : null}<button disabled={busy} type="submit">Save exception and replan</button></form> : null}
     </div>
   </section>
 }

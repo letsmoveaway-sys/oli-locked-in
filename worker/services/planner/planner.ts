@@ -16,6 +16,9 @@ export interface PlannerTopic {
   importance: number
   manualPriority: number | null
   requestedMore: boolean
+  targetSessions?: number
+  completedSessions?: number
+  coverageComplete?: boolean
 }
 
 export interface PlannedReviewItem {
@@ -34,15 +37,17 @@ export interface PlannerExam {
 
 export interface PlannerAvailability {
   weekday: number
-  availableMinutes: number
-  startTime: string | null
+  availableSlots?: number
+  availableMinutes?: number
   sessionMinutes?: number
+  startTime?: string | null
 }
 
 export interface PlannerException {
   startDatetime: string
   endDatetime: string
-  availableMinutes: number
+  availableSlots?: number
+  availableMinutes?: number
   protectStreak: boolean
   reason: string
 }
@@ -114,54 +119,39 @@ function weekday(date: string): number {
 }
 
 export function calculateRemainingWorkload(topic: PlannerTopic): number {
-  if (!topic.active) return 0
-  const gap = 1 - (topic.masteryScore ?? 0) / 100
-  return Math.max(topic.ragStatus === 'green' ? topic.estimatedEffort * 0.1 : 0, topic.estimatedEffort * gap)
+  const targetSessions = topic.targetSessions ?? Math.max(1, Math.ceil(topic.estimatedEffort))
+  if (!topic.active || targetSessions === 0) return 0
+  return Math.max(topic.coverageComplete === true ? 0 : 1, targetSessions - (topic.completedSessions ?? 0))
 }
 
 export function calculateTopicPriority(topic: PlannerTopic, context: PriorityContext): number {
   if (!topic.active) return 0
-  const masteryGap = 1 - (topic.masteryScore ?? 0) / 100
   const relevantExams = context.exams
     .filter((exam) => exam.subjectId === topic.subjectId)
     .map((exam) => daysBetween(context.today, exam.examDatetime))
     .filter((days) => days >= 0)
   const nearestExam = relevantExams.length ? Math.min(...relevantExams) : null
   const examUrgency = nearestExam === null ? 0.25 : clamp(1 - nearestExam / 180)
-  const sinceRevision = topic.lastRevisedAt ? clamp(daysBetween(topic.lastRevisedAt, context.today) / 30) : 1
-  const importance = clamp(topic.importance)
-  const uncovered = topic.masteryScore === null ? 1 : 0
   const manual = clamp((topic.manualPriority ?? 0) / 100)
+  const remaining = calculateRemainingWorkload(topic)
+  if (remaining <= 0) return 0
 
   let score = 100 * (
-    masteryGap * 0.35 +
-    examUrgency * 0.2 +
-    sinceRevision * 0.15 +
-    importance * 0.1 +
-    uncovered * 0.1 +
-    manual * 0.1
+    examUrgency * 0.45 +
+    clamp(remaining / Math.max(1, topic.targetSessions ?? topic.estimatedEffort)) * 0.25 +
+    clamp(topic.importance) * 0.15 +
+    manual * 0.15
   )
-  if (topic.ragStatus === 'red') score += 10
-  if (topic.ragStatus === 'grey') score += 8
-  if (topic.ragStatus === 'amber') score += 3
-  if (topic.ragStatus === 'green') score -= 10
-  if (topic.latestAssessment !== null && topic.latestAssessment < 50) score += 15
-  if (topic.latestAssessment !== null && topic.latestAssessment >= 80) score -= 12
   if (topic.requestedMore) score += 15
   if (context.tutorSubjectToday === topic.subjectId) score -= 25
-  if (topic.lastRevisedAt && daysBetween(topic.lastRevisedAt, context.today) <= 2 && (topic.masteryScore ?? 0) >= 75) score -= 15
   return Math.max(0, Math.round(score * 10) / 10)
 }
 
-function explanation(topic: PlannerTopic, asOfDate: string): string {
-  const parts = [topic.ragStatus === 'grey' ? 'Not assessed' : `${topic.ragStatus[0]!.toUpperCase()}${topic.ragStatus.slice(1)} topic`]
-  if (topic.latestAssessment !== null && topic.latestAssessment < 50) parts.push('low recent assessment')
-  if (!topic.lastRevisedAt) parts.push('not revised yet')
-  else {
-    const days = Math.max(0, Math.floor(daysBetween(topic.lastRevisedAt, asOfDate)))
-    if (days > 0) parts.push(`not revised for ${days} days`)
-  }
-  if (topic.requestedMore) parts.push('requested more practice')
+function explanation(topic: PlannerTopic, _asOfDate: string): string {
+  const remaining = calculateRemainingWorkload(topic)
+  const parts = [`${remaining} allocated session${remaining === 1 ? '' : 's'} remaining`]
+  if (topic.coverageComplete === false && (topic.completedSessions ?? 0) > 0) parts.push('coverage points still open')
+  if (!topic.lastRevisedAt) parts.push('not covered yet')
   return parts.join(' · ')
 }
 
@@ -169,10 +159,10 @@ function exceptionFor(date: string, exceptions: PlannerException[]): PlannerExce
   return exceptions.find((item) => date >= dateOnly(item.startDatetime) && date <= dateOnly(item.endDatetime))
 }
 
-function sessionTime(date: string, startTime: string | null, index: number, duration: number): string {
-  const [hour = 17, minute = 0] = (startTime ?? '17:00').split(':').map(Number)
+function sessionTime(date: string, startTime: string | null | undefined, index: number): string {
+  const [hour = 12, minute = 0] = (startTime ?? '12:00').split(':').map(Number)
   const value = new Date(`${date}T00:00:00.000Z`)
-  value.setUTCHours(hour, minute + index * (duration + 10))
+  value.setUTCHours(hour, minute + index * 60)
   return productLocalDateTimeToIso(value.toISOString().slice(0, 16))
 }
 
@@ -199,11 +189,9 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
   }))
   const plannedBySubject = new Map<string, number>()
   const plannedByTopic = new Map<string, number>()
-  const reviewTopicsScheduled = new Set<string>()
   for (const session of preserved) {
     plannedBySubject.set(session.subjectId, (plannedBySubject.get(session.subjectId) ?? 0) + 1)
     if (session.topicId) plannedByTopic.set(session.topicId, (plannedByTopic.get(session.topicId) ?? 0) + 1)
-    for (const item of session.reviewItems ?? []) reviewTopicsScheduled.add(item.topicId)
   }
   let previousTopicId: string | null = null
   let previousSubjectId: string | null = null
@@ -211,11 +199,12 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
   for (let dayOffset = 0; dayOffset < horizonDays; dayOffset += 1) {
     const date = addDays(context.today, dayOffset)
     const template = context.availability.find((item) => item.weekday === weekday(date))
-    const sessionMinutes = template?.sessionMinutes ?? context.defaultSessionMinutes
     const exception = exceptionFor(date, context.exceptions)
-    let minutes = exception ? exception.availableMinutes : template?.availableMinutes ?? 0
+    let slots = exception
+      ? exception.availableSlots ?? Math.floor((exception.availableMinutes ?? 0) / 35)
+      : template?.availableSlots ?? Math.floor((template?.availableMinutes ?? 0) / Math.max(1, template?.sessionMinutes ?? context.defaultSessionMinutes))
     const existingToday = output.filter((session) => dateOnly(session.scheduledAt) === date)
-    minutes -= existingToday.reduce((total, session) => total + session.plannedMinutes, 0)
+    slots -= existingToday.length
 
     const tutorsToday = context.tutors.filter((tutor) => tutor.date === date)
     for (const tutor of tutorsToday) {
@@ -227,7 +216,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
         topicName: `${tutor.subjectName} tutor`,
         scheduledAt: productLocalDateTimeToIso(`${date}T${tutor.startTime}`),
         startedAt: null,
-        plannedMinutes: tutor.durationMinutes,
+        plannedMinutes: 1,
         sessionType: 'Tutor session',
         status: 'tutor',
         plannerReason: 'Recurring tutor session',
@@ -236,10 +225,10 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
         reviewItems: [],
       })
       plannedBySubject.set(tutor.subjectId, (plannedBySubject.get(tutor.subjectId) ?? 0) + 1)
-      minutes -= tutor.durationMinutes
+      slots -= 1
     }
 
-    if (minutes < sessionMinutes) continue
+    if (slots < 1) continue
     const subjectCounts = new Map<string, number>()
     const topicIdsToday = new Set<string>()
     for (const session of output.filter((item) => dateOnly(item.scheduledAt) === date)) {
@@ -247,7 +236,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
       if (session.topicId) topicIdsToday.add(session.topicId)
     }
     let slotIndex = 0
-    while (minutes >= sessionMinutes) {
+    while (slots >= 1) {
       const tutorSubjects = new Set(tutorsToday.map((tutor) => tutor.subjectId))
       const candidates = context.topics
         .filter((topic) => topic.active && (workload.get(topic.id) ?? 0) > 0.05)
@@ -280,23 +269,6 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
       })[0]
       if (!selected || selected.priority <= 0) break
 
-      const dueReviews = context.topics
-        .filter((topic) => topic.active && topic.id !== selected.topic.id && topic.lastRevisedAt && topic.nextReviewAt)
-        .filter((topic) => dateOnly(topic.nextReviewAt!) <= date && !topicIdsToday.has(topic.id) && !reviewTopicsScheduled.has(topic.id))
-        .sort((left, right) => left.nextReviewAt!.localeCompare(right.nextReviewAt!) ||
-          calculateTopicPriority(right, { today: date, exams: context.exams }) - calculateTopicPriority(left, { today: date, exams: context.exams }))
-      const reviewTopic = dueReviews[0]
-      const primaryIsDueReview = Boolean(selected.topic.lastRevisedAt && selected.topic.nextReviewAt &&
-        dateOnly(selected.topic.nextReviewAt) <= date)
-      const reviewItems: PlannedReviewItem[] = reviewTopic ? [{
-        topicId: reviewTopic.id,
-        subjectId: reviewTopic.subjectId,
-        subjectName: reviewTopic.subjectName,
-        topicName: reviewTopic.name,
-        plannedMinutes: Math.min(8, Math.max(5, sessionMinutes - 20)),
-        reason: `Spaced retrieval from ${Math.max(1, Math.floor(daysBetween(reviewTopic.lastRevisedAt!, date)))} days ago`,
-      }] : []
-
       let generatedId = `generated-${date}-${slotIndex}`
       while (usedIds.has(generatedId)) generatedId = `${generatedId}-next`
       usedIds.add(generatedId)
@@ -306,32 +278,24 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
         subjectId: selected.topic.subjectId,
         subjectName: selected.topic.subjectName,
         topicName: selected.topic.name,
-        scheduledAt: sessionTime(date, template?.startTime ?? null, slotIndex, sessionMinutes),
+        scheduledAt: sessionTime(date, template?.startTime, slotIndex),
         startedAt: null,
-        plannedMinutes: sessionMinutes,
-        sessionType: reviewItems.length ? 'Learning + spaced review' : primaryIsDueReview ? 'Spaced retrieval review' : 'Focused learning',
+        plannedMinutes: 1,
+        sessionType: 'Revision topic',
         status: 'planned',
-        plannerReason: reviewItems.length
-          ? `${explanation(selected.topic, date)} · includes a due memory check`
-          : primaryIsDueReview
-            ? `Review due now · retrieve what you remember before checking notes`
-            : explanation(selected.topic, date),
+        plannerReason: explanation(selected.topic, date),
         source: 'generated',
         locked: false,
-        reviewItems,
+        reviewItems: [],
       })
       workload.set(selected.topic.id, Math.max(0, (workload.get(selected.topic.id) ?? 0) - 1))
       subjectCounts.set(selected.topic.subjectId, (subjectCounts.get(selected.topic.subjectId) ?? 0) + 1)
       topicIdsToday.add(selected.topic.id)
       plannedBySubject.set(selected.topic.subjectId, (plannedBySubject.get(selected.topic.subjectId) ?? 0) + 1)
       plannedByTopic.set(selected.topic.id, (plannedByTopic.get(selected.topic.id) ?? 0) + 1)
-      if (reviewTopic) {
-        reviewTopicsScheduled.add(reviewTopic.id)
-        topicIdsToday.add(reviewTopic.id)
-      }
       previousTopicId = selected.topic.id
       previousSubjectId = selected.topic.subjectId
-      minutes -= sessionMinutes
+      slots -= 1
       slotIndex += 1
     }
   }

@@ -19,8 +19,9 @@ describe('signed marking evidence', () => {
     const token = await createEvidenceToken(payload, 'a-test-secret-long-enough')
     const [body, signature] = token.split('.')
     const changedBody = `${body!.slice(0, -1)}${body!.endsWith('a') ? 'b' : 'a'}`
+    const changedSignature = `${signature!.startsWith('a') ? 'b' : 'a'}${signature!.slice(1)}`
     await expect(readEvidenceToken(`${changedBody}.${signature}`, 'a-test-secret-long-enough')).resolves.toBeNull()
-    await expect(readEvidenceToken(`${body}.${signature!.slice(0, -1)}a`, 'a-test-secret-long-enough')).resolves.toBeNull()
+    await expect(readEvidenceToken(`${body}.${changedSignature}`, 'a-test-secret-long-enough')).resolves.toBeNull()
   })
 
   it('rejects an expired result', async () => {

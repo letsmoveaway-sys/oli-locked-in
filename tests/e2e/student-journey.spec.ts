@@ -4,82 +4,66 @@ import AxeBuilder from '@axe-core/playwright'
 
 const { studentPassword, parentPassword } = JSON.parse(readFileSync('.e2e/auth.json', 'utf8')) as { studentPassword: string; parentPassword: string }
 
+async function signIn(page: import('@playwright/test').Page, username: 'oliver' | 'parent', password: string) {
+  await page.goto('/')
+  await page.getByLabel('Username or email').fill(username)
+  await page.getByLabel('Password').fill(password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+}
+
+async function openSurds(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: 'Topics', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Subjects and topic allocations' })).toBeVisible()
+  const mathematics = page.locator('.subject-overview').filter({ has: page.getByRole('heading', { name: 'Mathematics', exact: true }) })
+  await mathematics.locator(':scope > summary').click()
+  return mathematics.locator('.topic-allocation').filter({ hasText: 'Standard form and surds' })
+}
+
 async function expectNoSeriousAccessibilityIssues(page: import('@playwright/test').Page) {
   const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
   expect(result.violations.filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')).toEqual([])
 }
 
-test('student can learn a topic and check an answer', async ({ page }) => {
-  await page.goto('/')
-  await page.getByLabel('Username or email').fill('oliver')
-  await page.getByLabel('Password').fill(studentPassword)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.getByRole('button', { name: 'Learn', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'What you will be tested on' })).toBeVisible()
-  await page.getByText('Exam format, mark objectives and official resources').click()
-  await expect(page.getByRole('link', { name: /Exam papers and mark schemes/ }).first()).toBeVisible()
-  const medicine = page.locator('.topic-list details').filter({ has: page.getByText('Medicine in Britain, c1250–present', { exact: true }) }).first()
-  await medicine.locator('summary').click()
-  await medicine.getByRole('button', { name: 'Learn and practise' }).first().click()
-  await expect(page.getByRole('heading', { name: 'Understand the topic first' })).toBeVisible()
-  await page.getByRole('button', { name: '2. Worked examples' }).click()
-  await expect(page.getByRole('heading', { name: 'See how to work it through' })).toBeVisible()
-  await page.getByRole('button', { name: 'Show high-level exemplar' }).first().click()
-  await expect(page.getByText(/Exemplar answer:/).first()).toBeVisible()
-  await expect(page.getByRole('link', { name: /official specification content/ })).toBeVisible()
-  await page.getByRole('button', { name: '3. Test yourself' }).click()
-  await page.getByRole('button', { name: 'Continue on phone' }).click()
-  await expect(page.getByRole('img', { name: /QR code linking to this revision question/ })).toBeVisible()
-  const phoneLink = await page.getByLabel('Phone link').inputValue()
-  expect(new URL(phoneLink).searchParams.get('stage')).toBe('test')
-  await page.context().clearCookies()
-  await page.goto(phoneLink)
-  await page.getByLabel('Username or email').fill('oliver')
-  await page.getByLabel('Password').fill(studentPassword)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByText('Written exam practice')).toBeVisible()
-  await page.getByLabel('Type your answer in the app').fill('A developed answer using precise knowledge and an explained consequence.')
-  await expect(page.getByText(/One-tap marking is not connected/)).toBeVisible()
-  await page.getByLabel(/I understand and want to use optional AI marking/).check()
-  await page.getByRole('button', { name: /Mark with Gemini.*no API key/ }).click()
-  await expect(page.getByRole('heading', { name: /Optional Gemini marking/ })).toBeVisible()
-  await expect(page.getByLabel('Prepared prompt')).toContainText('A developed answer using precise knowledge')
-  await expect(page.getByRole('link', { name: /Open Gemini/ })).toHaveAttribute('href', 'https://gemini.google.com/app')
-  await expect(page.getByText('No generic quiz has been substituted for this topic.')).toBeVisible()
+test('student can inspect the detailed surds checklist and useful resources', async ({ page }) => {
+  await signIn(page, 'oliver', studentPassword)
+  const surds = await openSurds(page)
+  await surds.getByRole('button', { name: /Standard form and surds/ }).click()
+
+  await expect(page).toHaveURL(/view=topic&topic=maths-number-standard-surds/)
+  await expect(page.getByRole('heading', { name: 'Standard form and surds', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'What needs to be covered' })).toBeVisible()
+  await expect(page.locator('.coverage-list--large li')).toHaveCount(11)
+  await expect(page.getByText('Rationalise a denominator containing one surd')).toBeVisible()
+  const bitesize = page.getByRole('link', { name: /Standard form and surds on BBC Bitesize/ })
+  await expect(bitesize).toHaveAttribute('href', /^https:\/\/www\.bbc\.co\.uk\/bitesize\//)
+  await expect(page.getByRole('link', { name: /Open official course source/ })).toBeVisible()
 })
 
-test('student signs in, completes revision and sees updated evidence', async ({ page }) => {
+test('student completes a scheduled slot and unfinished coverage remains schedulable', async ({ page }) => {
   let completionRequest: { url: string; body: string } | null = null
   page.on('request', (request) => {
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/sessions/complete') {
       completionRequest = { url: request.url(), body: request.postData() ?? '{}' }
     }
   })
-  await page.goto('/')
-  await page.getByLabel('Username or email').fill('oliver')
-  await page.getByLabel('Password').fill(studentPassword)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('heading', { name: 'Your revision for today' })).toBeVisible()
 
-  const quickRevision = page.locator('.quick-revision')
-  const topicName = await quickRevision.locator('strong').innerText()
-  await quickRevision.getByRole('button', { name: '10 min', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Understand the topic first' })).toBeVisible()
-  await page.getByRole('button', { name: /Back/ }).click()
+  await signIn(page, 'oliver', studentPassword)
+  await page.goto('/?view=plan')
+  await expect(page.getByRole('heading', { name: 'Your next 14 days' })).toBeVisible()
+  await page.getByRole('button', { name: /^(Build|Rebuild) schedule$/ }).click()
 
-  const session = page.locator('.today-session').filter({ hasText: 'Revision now' }).filter({ has: page.getByText('Other options') }).first()
-  await expect(session).toContainText(topicName)
-  await session.getByText('Other options').click()
-  await session.getByRole('button', { name: 'Log work done elsewhere' }).click()
-  await page.getByLabel('Actual time spent (minutes)').fill('12')
-  await page.getByRole('button', { name: 'Confident', exact: true }).click()
-  await page.getByLabel('Quick-check score % optional').fill('80')
-  await page.getByLabel('Notes optional').fill('E2E completion evidence')
-  await page.getByRole('button', { name: 'Save and finish' }).click()
+  const session = page.locator('.plan-session').filter({ has: page.getByRole('button', { name: 'Complete slot' }) }).first()
+  await expect(session).toBeVisible()
+  const topicName = await session.locator('h4').innerText()
+  await session.getByRole('button', { name: 'Complete slot' }).click()
+  await expect(page.getByRole('heading', { name: topicName })).toBeVisible()
+
+  const firstCoverage = page.locator('.coverage-check').first()
+  const coverageName = (await firstCoverage.innerText()).trim()
+  await firstCoverage.getByRole('checkbox').check()
+  await page.getByLabel('Session notes optional').fill('E2E scheduling coverage')
+  await page.getByRole('button', { name: 'Save coverage' }).click()
   await expect(page.getByRole('status')).toContainText('Session completed')
-  const xpTotal = page.getByText(/XP total/)
-  await expect(xpTotal).toBeVisible()
-  const xpBeforeRetry = await xpTotal.innerText()
 
   expect(completionRequest).not.toBeNull()
   const retry = await page.request.post(completionRequest!.url, {
@@ -87,40 +71,35 @@ test('student signs in, completes revision and sees updated evidence', async ({ 
     headers: { Origin: new URL(page.url()).origin },
   })
   expect(retry.ok()).toBe(true)
-  await page.reload()
-  await expect(page.getByText(/XP total/)).toHaveText(xpBeforeRetry)
 
-  const completedSession = page.locator('.today-session').filter({ hasText: topicName }).filter({ has: page.getByRole('button', { name: 'Review content' }) }).first()
-  await completedSession.getByRole('button', { name: 'Review content' }).click()
-  await expect(page.getByRole('status')).toContainText('Nothing in this session will replace or change your saved test scores')
-  await expect(page.locator('.saved-notes')).toHaveText('E2E completion evidence')
-  await page.getByRole('button', { name: /Back/ }).click()
+  const completedSession = page.locator('.plan-session').filter({ hasText: topicName }).filter({ hasText: 'completed' }).first()
+  await completedSession.getByRole('button', { name: 'View topic' }).click()
+  await expect(page.locator('li.is-covered').filter({ hasText: coverageName })).toBeVisible()
+  await expect(page.getByText(/E2E scheduling coverage/)).toBeVisible()
+  await expect(page.getByText(/follow-up slots required/)).toBeVisible()
 })
 
-test('student routes survive refresh and key screens pass accessibility checks', async ({ page }) => {
-  await page.goto('/?view=progress')
+test('topic routes survive refresh and key screens pass accessibility checks', async ({ page }) => {
+  await page.goto('/?view=subjects')
   await page.getByLabel('Username or email').fill('oliver')
   await page.getByLabel('Password').fill(studentPassword)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('heading', { name: 'Your topic progress' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Subjects and topic allocations' })).toBeVisible()
   await expectNoSeriousAccessibilityIssues(page)
 
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Your topic progress' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Subjects and topic allocations' })).toBeVisible()
   await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Your revision for today' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Today’s revision topics' })).toBeVisible()
   await expectNoSeriousAccessibilityIssues(page)
 })
 
-test('parent can reset POC activity without deleting configuration', async ({ page }) => {
-  await page.goto('/')
-  await page.getByLabel('Username or email').fill('parent')
-  await page.getByLabel('Password').fill(parentPassword)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+test('parent can allocate eight revision slots to surds', async ({ page }) => {
+  await signIn(page, 'parent', parentPassword)
   await expectNoSeriousAccessibilityIssues(page)
-  await page.getByRole('button', { name: 'Reset POC revision progress' }).click()
-  await page.getByLabel(/Type RESET PROGRESS/).fill('RESET PROGRESS')
-  await page.getByRole('button', { name: 'Clear trial activity' }).click()
-  await expect(page.getByRole('status')).toContainText('POC revision activity was cleared')
-  await expect(page.getByRole('button', { name: 'Course configuration' })).toBeVisible()
+  const surds = await openSurds(page)
+  await surds.getByLabel('Allocated revision slots').fill('8')
+  await surds.getByRole('button', { name: 'Save allocation' }).click()
+  await expect(page.getByRole('status')).toContainText('Topic allocation updated')
+  await expect(surds.getByLabel('Allocated revision slots')).toHaveValue('8')
 })

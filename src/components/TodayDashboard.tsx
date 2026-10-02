@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
-import type { Analytics, PlanSession, SessionCompletionInput, TopicProgress } from '../types'
-import { formatProductDate, formatProductTime, productDateKey } from '../utils/dateTime'
+import { useState } from 'react'
+import type { PlanSession, SessionCompletionInput, TopicProgress } from '../types'
+import { formatProductDate, productDateKey } from '../utils/dateTime'
 import { SessionCompletionDialog } from './SessionCompletionDialog'
 import { CannotDoDialog, type CannotDoReason } from './CannotDoDialog'
 
@@ -9,109 +9,29 @@ interface TodayDashboardProps {
   topics: TopicProgress[]
   onComplete: (input: SessionCompletionInput) => Promise<void>
   onCannotDo: (sessionId: string, reason: CannotDoReason, status: 'rescheduled' | 'skipped') => Promise<void>
-  onStart: (sessionId: string, topicId: string) => Promise<void>
-  onQuickRevision: (topicId: string, minutes: number) => Promise<void>
   onViewTopic: (topicId: string) => void
-  onReviewTopic: (topicId: string) => void
   onOpenWeek: () => void
   editable?: boolean
-  analytics?: Analytics | null
 }
 
-function sessionDate(value: string): string { return productDateKey(new Date(value)) }
-
-function studentStatus(status: TopicProgress['ragStatus'] | undefined): string {
-  if (status === 'red') return 'Needs work'
-  if (status === 'amber') return 'Developing'
-  if (status === 'green') return 'Secure'
-  return 'Not checked yet'
-}
-
-export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onStart, onQuickRevision, onViewTopic, onReviewTopic, onOpenWeek, editable = true, analytics }: TodayDashboardProps) {
+export function TodayDashboard({ sessions, topics, onComplete, onCannotDo, onViewTopic, onOpenWeek, editable = true }: TodayDashboardProps) {
   const today = productDateKey()
-  const todaySessions = sessions.filter((session) => sessionDate(session.scheduledAt) === today)
+  const todaySessions = sessions.filter((session) => productDateKey(new Date(session.scheduledAt)) === today)
   const [activeSession, setActiveSession] = useState<PlanSession | null>(null)
   const [blockedSession, setBlockedSession] = useState<PlanSession | null>(null)
-  const plannedMinutes = todaySessions.filter((item) => item.status === 'planned' || item.status === 'tutor').reduce((sum, item) => sum + item.plannedMinutes, 0)
-  const weekSessions = sessions.slice().sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)).slice(0, 14)
-  const completed = weekSessions.filter((item) => item.status === 'completed')
-  const assessed = topics.filter((topic) => topic.masteryScore !== null)
-  const averageMastery = assessed.length ? Math.round(assessed.reduce((sum, topic) => sum + (topic.masteryScore ?? 0), 0) / assessed.length) : 0
-  const weakTopics = useMemo(() => topics.filter((topic) => topic.ragStatus === 'red' || topic.ragStatus === 'amber').sort((a, b) => (a.masteryScore ?? 0) - (b.masteryScore ?? 0)).slice(0, 3), [topics])
-  const todayTopicId = todaySessions.find((session) => session.status === 'planned' && session.topicId)?.topicId
-  const quickTopic = topics.find((topic) => topic.topicId === todayTopicId)
-    ?? topics.find((topic) => topic.nextReviewAt && topic.nextReviewAt.slice(0, 10) <= today)
-    ?? weakTopics[0]
-    ?? topics.find((topic) => topic.ragStatus === 'grey')
-  const newStarter = assessed.length === 0 && completed.length === 0
+  const completedTopics = topics.filter((topic) => (topic.coverageItems ?? []).every((item) => item.completed)).length
+  const openCoverage = topics.reduce((total, topic) => total + (topic.coverageItems ?? []).filter((item) => !item.completed).length, 0)
 
-  return (
-    <section aria-labelledby="today-heading">
-      <div className="today-hero card">
-        <div><p className="eyebrow">Today · {formatProductDate(new Date(), { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2 id="today-heading">Your revision for today</h2><p>{plannedMinutes ? `${plannedMinutes} minutes planned across ${todaySessions.length} session${todaySessions.length === 1 ? '' : 's'}.` : 'Nothing is scheduled today. Use the week view to see what is coming up.'}</p></div>
-        <button className="secondary" onClick={onOpenWeek} type="button">View full week</button>
-      </div>
-
-      <div className="today-layout">
-        <div>
-          <h3 className="subheading">Today’s sessions</h3>
-          {!todaySessions.length ? <div className="card empty-plan"><h3>No sessions today</h3><p>Your plan is deliberately spread around your availability.</p></div> : null}
-          <div className="today-sessions">
-            {todaySessions.map((session) => {
-              const topic = topics.find((item) => item.topicId === session.topicId)
-              const isTutor = session.source === 'tutor'
-              return (
-                <article className={`today-session card ${isTutor ? 'today-session--tutor' : ''}`} key={session.id}>
-                  <div className="today-session__time"><strong>{formatProductTime(session.scheduledAt)}</strong><span>{session.plannedMinutes} min</span></div>
-                  <div className="today-session__main">
-                    <p>{session.subjectName} · {session.sessionType}</p><h3>{session.topicName}</h3>
-                    <span className={`rag-label rag--${topic?.ragStatus ?? 'grey'}`}>{isTutor ? 'Tutor' : studentStatus(topic?.ragStatus)}</span>
-                    <p className="reason">Why this is here: {session.plannerReason}</p>
-                    {(session.reviewItems ?? []).length ? <div className="review-agenda">
-                      <strong>Memory review from earlier learning</strong>
-                      <ol><li>Without notes, write or say what you remember.</li><li>Attempt a few questions, quotations or key steps.</li><li>Then check the topic and correct any gaps.</li></ol>
-                      {(session.reviewItems ?? []).map((item) => <div className="review-agenda__item" key={item.topicId}><p><span>{item.plannedMinutes} min · {item.subjectName}</span>{item.topicName}<small>{item.reason}</small></p><button className="text-button" onClick={() => onViewTopic(item.topicId)} type="button">Open after recall</button></div>)}
-                    </div> : session.sessionType === 'Spaced retrieval review'
-                      ? <p className="new-learning-note">Memory review: try the topic from memory before reopening the lesson notes.</p>
-                      : <p className="new-learning-note">Main focus: learn or strengthen this topic.</p>}
-                    {session.startedAt ? <p className="started-note" role="status">In progress — your start has been saved.</p> : null}
-                  </div>
-                  {editable && session.status === 'planned' && !isTutor ? (
-                    <div className="today-session__actions">
-                      <button onClick={() => session.topicId && void onStart(session.id, session.topicId)} type="button">{session.startedAt ? 'Resume revision' : 'Start revision'}</button>
-                      {session.startedAt ? <button onClick={() => setActiveSession(session)} type="button">Finish and log</button> : null}
-                      <details className="session-other-actions"><summary>Other options</summary><div><button className="secondary" onClick={() => setActiveSession(session)} type="button">Log work done elsewhere</button><button className="text-button" onClick={() => setBlockedSession(session)} type="button">Cannot do this session</button></div></details>
-                    </div>
-                  ) : <div className="today-session__actions"><span className="session-status">{session.status}</span>{session.topicId ? <button className="secondary" onClick={() => onReviewTopic(session.topicId!)} type="button">Review content</button> : null}</div>}
-                </article>
-              )
-            })}
-          </div>
-        </div>
-
-        <aside>
-          <h3 className="subheading">Priority weak areas</h3>
-          <div className="weak-list card">
-            {weakTopics.length ? weakTopics.map((topic) => (
-              <button className="weak-topic" key={topic.topicId} onClick={() => onViewTopic(topic.topicId)} type="button">
-                <span className={`rag-dot rag-dot--${topic.ragStatus}`} />
-                <span><strong>{topic.topicName}</strong><small>{topic.subjectName} · {topic.masteryScore ?? 0}% mastery</small></span>
-              </button>
-            )) : <p>No weak areas yet. Complete confidence checks to build the picture.</p>}
-          </div>
-          {editable && quickTopic ? <div className="quick-revision card"><h3>Short on time or energy?</h3><p>Do one focused check on <strong>{quickTopic.topicName}</strong>. A small useful start still counts.</p><div className="quick-revision__actions">{[5, 10, 20].map((minutes) => <button className="secondary" key={minutes} onClick={() => void onQuickRevision(quickTopic.topicId, minutes)} type="button">{minutes === 5 ? 'Low energy · 5 min' : `${minutes} min`}</button>)}</div></div> : null}
-        </aside>
-      </div>
-
-      {newStarter ? <section className="starter-journey card" aria-labelledby="starter-heading"><p className="eyebrow">Your first week</p><h3 id="starter-heading">Build the plan one useful check at a time</h3><ol><li><strong>Start today’s first session.</strong><span>The app will save where you begin.</span></li><li><strong>Complete the short knowledge check.</strong><span>This gives the planner its first real evidence.</span></li><li><strong>Finish and record how it felt.</strong><span>Your next sessions will become more personal.</span></li></ol><p>You are not behind—the empty figures simply mean the app is still learning what you know.</p></section> : <div className="dashboard-stats">
-        <article className="mini-stat"><strong>{assessed.length ? `${averageMastery}%` : '—'}</strong><span>{assessed.length ? 'current mastery estimate' : 'not enough evidence yet'}</span></article>
-        <article className="mini-stat"><strong>{assessed.length}/{topics.length}</strong><span>topics checked</span></article>
-        <article className="mini-stat"><strong>{analytics?.week.completedSessions ?? completed.length}/{analytics?.week.plannedSessions ?? weekSessions.length}</strong><span>sessions this week</span></article>
-        <article className="mini-stat"><strong>{analytics?.week.completedMinutes ?? completed.reduce((sum, item) => sum + item.plannedMinutes, 0)}/{analytics?.week.plannedMinutes ?? weekSessions.reduce((sum, item) => sum + item.plannedMinutes, 0)}m</strong><span>minutes this week</span></article>
-      </div>}
-
-      {activeSession ? <SessionCompletionDialog onClose={() => setActiveSession(null)} onComplete={onComplete} session={activeSession} /> : null}
-      {blockedSession ? <CannotDoDialog onClose={() => setBlockedSession(null)} onSubmit={onCannotDo} session={blockedSession} /> : null}
-    </section>
-  )
+  return <section aria-labelledby="today-heading">
+    <div className="today-hero card"><div><p className="eyebrow">Today · {formatProductDate(new Date(), { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2 id="today-heading">Today’s revision topics</h2><p>{todaySessions.length ? `${todaySessions.length} revision slot${todaySessions.length === 1 ? '' : 's'} scheduled.` : 'Nothing is scheduled today. Open the plan to see what is coming up.'}</p></div><button className="secondary" onClick={onOpenWeek} type="button">View full week</button></div>
+    <div className="today-layout"><div><h3 className="subheading">Scheduled today</h3>{!todaySessions.length ? <div className="card empty-plan"><h3>No topics today</h3><p>The schedule is spread across the revision capacity that has been set.</p></div> : null}<div className="today-sessions">{todaySessions.map((session) => {
+      const topic = topics.find((item) => item.topicId === session.topicId)
+      const covered = (topic?.coverageItems ?? []).filter((item) => item.completed).length
+      const total = topic?.coverageItems?.length ?? 0
+      return <article className={`today-session card ${session.source === 'tutor' ? 'today-session--tutor' : ''}`} key={session.id}><div className="today-session__main"><p>{session.subjectName} · {session.sessionType}</p><h3>{session.topicName}</h3><p className="reason">Why this is here: {session.plannerReason}</p>{topic ? <p className="coverage-summary"><strong>{covered}/{total}</strong> coverage points marked</p> : null}</div>{editable && session.status === 'planned' && session.source !== 'tutor' ? <div className="today-session__actions">{session.topicId ? <button className="secondary" onClick={() => onViewTopic(session.topicId!)} type="button">View checklist and resources</button> : null}<button onClick={() => setActiveSession(session)} type="button">Complete and mark coverage</button><button className="text-button" onClick={() => setBlockedSession(session)} type="button">Cannot do this slot</button></div> : <div className="today-session__actions"><span className="session-status">{session.status}</span>{session.topicId ? <button className="secondary" onClick={() => onViewTopic(session.topicId!)} type="button">View checklist and resources</button> : null}</div>}</article>
+    })}</div></div><aside><h3 className="subheading">Coverage overview</h3><div className="weak-list card"><p><strong>{completedTopics}</strong> topics fully covered</p><p><strong>{openCoverage}</strong> detailed coverage points still open</p><button className="secondary" onClick={onOpenWeek} type="button">Open schedule</button></div></aside></div>
+    <div className="dashboard-stats"><article className="mini-stat"><strong>{completedTopics}/{topics.length}</strong><span>topics fully covered</span></article><article className="mini-stat"><strong>{todaySessions.filter((item) => item.status === 'completed').length}/{todaySessions.length}</strong><span>today’s slots completed</span></article><article className="mini-stat"><strong>{openCoverage}</strong><span>coverage points remaining</span></article></div>
+    {activeSession ? <SessionCompletionDialog onClose={() => setActiveSession(null)} onComplete={onComplete} session={activeSession} topic={topics.find((topic) => topic.topicId === activeSession.topicId)} /> : null}
+    {blockedSession ? <CannotDoDialog onClose={() => setBlockedSession(null)} onSubmit={onCannotDo} session={blockedSession} /> : null}
+  </section>
 }

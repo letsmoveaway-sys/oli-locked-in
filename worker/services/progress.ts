@@ -1,6 +1,7 @@
 import type { Env, SessionUser } from '../types'
 import { calculateMastery, type Confidence, type MasteryEvidence, type RagStatus } from './planner/mastery'
 import { awardQuizXp, awardRagTransitionXp } from './gamification'
+import { buildCoverageItems } from '../content/coverage'
 
 interface ProgressRow {
   topic_id: string
@@ -17,6 +18,7 @@ interface ProgressRow {
   total_minutes: number | null
   next_review_at: string | null
   assessment_percentage: number | null
+  target_sessions: number | null
 }
 
 interface EvidenceRow {
@@ -43,6 +45,9 @@ export interface TopicProgressView {
   totalMinutes: number
   nextReviewAt: string | null
   latestAssessment: number | null
+  targetSessions: number
+  remainingSessions: number
+  coverageItems: Array<{ id: string; name: string; completed: boolean }>
 }
 
 export interface TopicDetailView extends TopicProgressView {
@@ -71,11 +76,11 @@ async function studentIdFor(user: SessionUser, env: Env): Promise<string | null>
 export async function getProgress(user: SessionUser, env: Env): Promise<TopicProgressView[]> {
   const studentId = await studentIdFor(user, env)
   if (!studentId) return []
-  const result = await env.DB.prepare(
+  const [result, coverage] = await Promise.all([env.DB.prepare(
     `SELECT t.id AS topic_id, t.name AS topic_name, t.description, t.subject_id,
             s.name AS subject_name, t.component, tp.mastery_score, tp.confidence,
             tp.rag_status, tp.last_revised_at, tp.total_sessions, tp.total_minutes,
-            tp.next_review_at,
+            tp.next_review_at, tst.target_sessions,
             (SELECT a.percentage FROM assessments a
              WHERE a.student_id = ? AND a.topic_id = t.id
              ORDER BY a.completed_at DESC LIMIT 1) AS assessment_percentage
@@ -83,6 +88,7 @@ export async function getProgress(user: SessionUser, env: Env): Promise<TopicPro
      JOIN subjects s ON s.id = t.subject_id
      JOIN student_subjects ss ON ss.subject_id = t.subject_id AND ss.student_id = ?
      LEFT JOIN topic_progress tp ON tp.topic_id = t.id AND tp.student_id = ?
+     LEFT JOIN topic_schedule_targets tst ON tst.topic_id = t.id AND tst.student_id = ?
      WHERE t.active = 1 AND ss.active = 1
        AND (t.applicability = 'common'
          OR (t.subject_id = 'subject-geography' AND (
@@ -95,9 +101,19 @@ export async function getProgress(user: SessionUser, env: Env): Promise<TopicPro
        AND (t.tier = 'both' OR t.tier = ss.tier)
        AND NOT EXISTS (SELECT 1 FROM topics child WHERE child.parent_topic_id = t.id AND child.active = 1)
      ORDER BY s.name, t.name`,
-  ).bind(studentId, studentId, studentId).all<ProgressRow>()
+  ).bind(studentId, studentId, studentId, studentId).all<ProgressRow>(),
+  env.DB.prepare('SELECT topic_id, coverage_item_id FROM topic_coverage_progress WHERE student_id = ?')
+    .bind(studentId).all<{ topic_id: string; coverage_item_id: string }>(),
+  ])
 
-  return result.results.map((row) => ({
+  const completed = new Set(coverage.results.map((item) => `${item.topic_id}:${item.coverage_item_id}`))
+
+  return result.results.map((row) => {
+    const coverageItems = buildCoverageItems({ id: row.topic_id, name: row.topic_name, description: row.description })
+      .map((item) => ({ ...item, completed: completed.has(`${row.topic_id}:${item.id}`) }))
+    const targetSessions = row.target_sessions ?? 1
+    const remainingCoverage = coverageItems.some((item) => !item.completed)
+    return ({
     topicId: row.topic_id,
     topicName: row.topic_name,
     description: row.description,
@@ -112,7 +128,21 @@ export async function getProgress(user: SessionUser, env: Env): Promise<TopicPro
     totalMinutes: row.total_minutes ?? 0,
     nextReviewAt: row.next_review_at,
     latestAssessment: row.assessment_percentage,
-  }))
+    targetSessions,
+    remainingSessions: Math.max(remainingCoverage ? 1 : 0, targetSessions - (row.total_sessions ?? 0)),
+    coverageItems,
+  })})
+}
+
+export async function setTopicScheduleTarget(user: SessionUser, topicId: string, targetSessions: number, env: Env): Promise<boolean> {
+  const studentId = await studentIdFor(user, env)
+  if (!studentId || !(await topicAvailable(studentId, topicId, env))) return false
+  const result = await env.DB.prepare(
+    `INSERT INTO topic_schedule_targets (student_id, topic_id, target_sessions, created_at, updated_at)
+     VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     ON CONFLICT(student_id, topic_id) DO UPDATE SET target_sessions = excluded.target_sessions, updated_at = CURRENT_TIMESTAMP`,
+  ).bind(studentId, topicId, targetSessions).run()
+  return result.success
 }
 
 export async function getTopicDetail(user: SessionUser, topicId: string, env: Env): Promise<TopicDetailView | null> {

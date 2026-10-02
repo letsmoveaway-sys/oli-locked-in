@@ -76,6 +76,12 @@ export async function getProgress(): Promise<TopicProgress[]> {
   return (await request<{ topics: TopicProgress[] }>('/api/progress')).topics
 }
 
+export async function setTopicTarget(topicId: string, targetSessions: number): Promise<{ topics: TopicProgress[]; sessions: PlanSession[]; message: string }> {
+  return request<{ topics: TopicProgress[]; sessions: PlanSession[]; message: string }>('/api/scheduling/topic-target', {
+    method: 'PUT', body: JSON.stringify({ topicId, targetSessions }),
+  })
+}
+
 export async function updateConfidence(topicId: string, confidence: Confidence): Promise<TopicProgress[]> {
   return (await request<{ topics: TopicProgress[] }>('/api/progress/confidence', {
     method: 'PUT',
@@ -213,7 +219,7 @@ export async function setWeeklyGoal(minutes: number): Promise<{ analytics: Analy
 }
 
 export async function addAvailabilityException(input: {
-  startDatetime: string; endDatetime: string; reason: string; availableMinutes: number; protectStreak: boolean
+  startDatetime: string; endDatetime: string; reason: string; availableSlots: number; protectStreak: boolean
 }): Promise<{ sessions: PlanSession[]; message: string }> {
   return request<{ sessions: PlanSession[]; message: string }>('/api/availability/exceptions', {
     method: 'POST', body: JSON.stringify(input),

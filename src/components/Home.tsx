@@ -1,35 +1,29 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  addAvailabilityException, completeSession, exportStudentData, generatePlan, getAnalytics, getAvailability, getPlan, getProgress, getSubjectRevision, getSubjects, getTopicDetail, getTopicRevision,
-  recordAssessment, recordKnowledgeCheck, replan, resetPocProgress, reviseNow, saveAvailability as saveAvailabilityRequest, saveExam as saveExamRequest, setAiMarkingPreference, setSessionStatus, setWeeklyGoal, startSession, updateConfidence, updateCourse,
+  addAvailabilityException, completeSession, generatePlan, getAnalytics, getAvailability, getPlan, getProgress, getSubjects, getTopicDetail, getTopicRevision,
+  replan, saveAvailability as saveAvailabilityRequest, saveExam as saveExamRequest, setSessionStatus, setTopicTarget, updateCourse,
 } from '../services/api'
-import type { Analytics, Confidence, CourseSubject, PlanSession, SessionCompletionInput, SessionUser, SubjectRevisionGuide, TopicDetail, TopicProgress, TopicRevision, WeeklyAvailability } from '../types'
-import { AnalyticsDashboard } from './AnalyticsDashboard'
+import type { Analytics, CourseSubject, PlanSession, SessionCompletionInput, SessionUser, TopicDetail, TopicProgress, TopicRevision, WeeklyAvailability } from '../types'
 import { CalendarDashboard, type ExamValues } from './CalendarDashboard'
 import { CourseSetup, type CourseValues } from './CourseSetup'
 import { PlanDashboard } from './PlanDashboard'
-import { ProgressDashboard } from './ProgressDashboard'
 import { SubjectBrowser } from './SubjectBrowser'
-import { SubjectPreview } from './SubjectPreview'
 import { TodayDashboard } from './TodayDashboard'
 import { WeeklyPlanner } from './WeeklyPlanner'
-import { GamificationCard } from './GamificationCard'
-import { ParentDashboard } from './ParentDashboard'
-import { RevisionSubjectGuide } from './RevisionSubjectGuide'
-import { LearningSession } from './LearningSession'
+import { TopicSchedulePanel } from './TopicSchedulePanel'
 import { PrivacyNotice } from './PrivacyNotice'
 import type { CannotDoReason } from './CannotDoDialog'
 
 interface HomeProps { user: SessionUser; onSignOut: () => Promise<void> }
-type View = 'today' | 'week' | 'subjects' | 'progress' | 'analytics' | 'calendar' | 'parent' | 'plan' | 'courses' | 'content' | 'privacy' | 'lesson'
+type View = 'today' | 'week' | 'subjects' | 'progress' | 'analytics' | 'calendar' | 'parent' | 'plan' | 'courses' | 'content' | 'privacy' | 'topic'
 
-const studentViews: View[] = ['today', 'week', 'subjects', 'progress', 'analytics', 'calendar', 'plan', 'courses', 'content', 'privacy', 'lesson']
-const parentViews: View[] = ['parent', 'today', 'subjects', 'progress', 'analytics', 'calendar', 'plan', 'courses', 'privacy', 'lesson']
+const studentViews: View[] = ['today', 'week', 'subjects', 'calendar', 'plan', 'courses', 'privacy', 'topic']
+const parentViews: View[] = ['today', 'subjects', 'calendar', 'plan', 'courses', 'privacy', 'topic']
 
 function routedView(role: SessionUser['role']): View {
   const requested = new URL(window.location.href).searchParams.get('view') as View | null
   const allowed = role === 'student' ? studentViews : parentViews
-  return requested && allowed.includes(requested) ? requested : role === 'student' ? 'today' : 'parent'
+  return requested && allowed.includes(requested) ? requested : 'today'
 }
 
 export function Home({ user, onSignOut }: HomeProps) {
@@ -39,23 +33,14 @@ export function Home({ user, onSignOut }: HomeProps) {
   const [availability, setAvailability] = useState<WeeklyAvailability[]>([])
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [view, setView] = useState<View>(() => routedView(user.role))
-  const [previousView, setPreviousView] = useState<View>(user.role === 'student' ? 'today' : 'parent')
-  const [selectedSubjectId, setSelectedSubjectId] = useState('subject-history')
+  const [previousView, setPreviousView] = useState<View>('today')
   const [topicDetail, setTopicDetail] = useState<TopicDetail | null>(null)
   const [topicRevision, setTopicRevision] = useState<TopicRevision | null>(null)
-  const [lessonReadOnly, setLessonReadOnly] = useState(false)
-  const [topicLoading, setTopicLoading] = useState(() => routedView(user.role) === 'lesson')
-  const [subjectGuide, setSubjectGuide] = useState<SubjectRevisionGuide | null>(null)
-  const [guideLoading, setGuideLoading] = useState(false)
+  const [topicLoading, setTopicLoading] = useState(() => routedView(user.role) === 'topic')
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [moreOpen, setMoreOpen] = useState(false)
-  const phoneHandoffOpened = useRef(false)
-  const activeSubjects = subjects.filter((subject) => subject.active)
-  const nextLearningSession = plan
-    .filter((session) => session.status === 'planned' && session.topicId)
-    .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt))[0]
 
   async function loadDashboard() {
     setLoading(true); setError('')
@@ -73,15 +58,6 @@ export function Home({ user, onSignOut }: HomeProps) {
 
   useEffect(() => { void loadDashboard() }, [])
 
-  useEffect(() => {
-    if (view !== 'content' || !selectedSubjectId) return
-    setGuideLoading(true); setSubjectGuide(null)
-    void getSubjectRevision(selectedSubjectId)
-      .then(setSubjectGuide)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load exam guidance.'))
-      .finally(() => setGuideLoading(false))
-  }, [view, selectedSubjectId])
-
   async function saveCourse(subject: CourseSubject, values: CourseValues) {
     setError(''); setMessage('')
     try {
@@ -90,22 +66,16 @@ export function Home({ user, onSignOut }: HomeProps) {
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save the course.') }
   }
 
-  async function saveConfidence(topicId: string, confidence: Confidence) {
-    setError('')
-    try { setProgress(await updateConfidence(topicId, confidence)); setAnalytics(await getAnalytics()) }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save confidence.'); throw caught }
-  }
-
-  async function saveAssessment(topicId: string, score: number, maximumScore: number, evidence: Parameters<typeof recordAssessment>[3] = {}) {
-    setError('')
-    try { setProgress(await recordAssessment(topicId, score, maximumScore, evidence)); setAnalytics(await getAnalytics()); setMessage('Assessment result recorded and mastery recalculated.') }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to record the assessment.'); throw caught }
-  }
-
   async function buildPlan() {
     setError('')
     try { const result = await generatePlan(); setPlan(result.sessions); setMessage(result.message) }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to generate the plan.') }
+  }
+
+  async function saveTopicTarget(topicId: string, targetSessions: number) {
+    setError('')
+    try { const result = await setTopicTarget(topicId, targetSessions); setProgress(result.topics); setPlan(result.sessions); setMessage(result.message) }
+    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to update the topic allocation.'); throw caught }
   }
 
   async function changeSessionStatus(sessionId: string, reason: CannotDoReason, status: 'rescheduled' | 'skipped') {
@@ -126,28 +96,27 @@ export function Home({ user, onSignOut }: HomeProps) {
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to replan.') }
   }
 
-  async function loadTopic(topicId: string, readOnly = false) {
-    setLessonReadOnly(readOnly); setView('lesson'); setTopicLoading(true); setTopicDetail(null); setTopicRevision(null)
+  async function loadTopic(topicId: string) {
+    setView('topic'); setTopicLoading(true); setTopicDetail(null); setTopicRevision(null)
     try { const [detail, revision] = await Promise.all([getTopicDetail(topicId), getTopicRevision(topicId)]); setTopicDetail(detail); setTopicRevision(revision) }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to load the topic.') }
     finally { setTopicLoading(false) }
   }
 
-  async function openTopic(topicId: string, readOnly = false) {
-    if (view !== 'lesson') setPreviousView(view)
+  async function openTopic(topicId: string) {
+    if (view !== 'topic') setPreviousView(view)
     const url = new URL(window.location.href)
-    url.searchParams.set('view', 'lesson'); url.searchParams.set('topic', topicId); url.searchParams.set('from', view === 'lesson' ? previousView : view)
-    if (readOnly) url.searchParams.set('review', '1'); else url.searchParams.delete('review')
+    url.searchParams.set('view', 'topic'); url.searchParams.set('topic', topicId); url.searchParams.set('from', view === 'topic' ? previousView : view)
+    url.searchParams.delete('review')
     window.history.pushState({ gcseRoute: true }, '', url)
-    await loadTopic(topicId, readOnly)
+    await loadTopic(topicId)
   }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const topicId = params.get('view') === 'lesson' || params.get('handoff') === 'phone' ? params.get('topic') ?? '' : ''
+    const topicId = params.get('view') === 'topic' ? params.get('topic') ?? '' : ''
     if (!/^[a-z0-9-]{1,100}$/.test(topicId)) return
-    phoneHandoffOpened.current = true
-    void loadTopic(topicId, params.get('review') === '1')
+    void loadTopic(topicId)
   }, [])
 
   useEffect(() => {
@@ -155,75 +124,19 @@ export function Home({ user, onSignOut }: HomeProps) {
       const next = routedView(user.role)
       const params = new URL(window.location.href).searchParams
       const topicId = params.get('topic') ?? ''
-      if (next === 'lesson' && /^[a-z0-9-]{1,100}$/.test(topicId)) {
+      if (next === 'topic' && /^[a-z0-9-]{1,100}$/.test(topicId)) {
         const from = params.get('from') as View | null
-        if (from && from !== 'lesson') setPreviousView(from)
-        void loadTopic(topicId, params.get('review') === '1')
+        if (from && from !== 'topic') setPreviousView(from)
+        void loadTopic(topicId)
         return
       }
-      setTopicDetail(null); setTopicRevision(null); setTopicLoading(false); setLessonReadOnly(false); setView(next)
+      setTopicDetail(null); setTopicRevision(null); setTopicLoading(false); setView(next)
     }
     window.addEventListener('popstate', restoreRoute)
     return () => window.removeEventListener('popstate', restoreRoute)
   }, [user.role])
 
-  async function assessFromTopic(topicId: string, score: number, maximumScore: number, evidence?: Parameters<typeof recordAssessment>[3]) {
-    await saveAssessment(topicId, score, maximumScore, evidence); setTopicDetail(await getTopicDetail(topicId))
-  }
-
-  async function saveKnowledgeCheck(topicId: string, answers: Record<string, number>) {
-    setError('')
-    try {
-      const result = await recordKnowledgeCheck(topicId, answers)
-      setProgress(result.topics); setAnalytics(await getAnalytics()); setMessage('Knowledge check saved and your plan updated.')
-      return { score: result.score, maximumScore: result.maximumScore }
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save the knowledge check.'); throw caught }
-  }
-
-  async function beginPlannedSession(sessionId: string, topicId: string) {
-    setError('')
-    try {
-      const result = await startSession(sessionId)
-      setPlan(result.sessions); setMessage(result.message)
-      await openTopic(topicId)
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to start revision.') }
-  }
-
-  async function beginQuickRevision(topicId: string, plannedMinutes: number) {
-    setError('')
-    try {
-      const result = await reviseNow(topicId, plannedMinutes)
-      setPlan(result.sessions); setMessage(result.message)
-      await openTopic(topicId)
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to start quick revision.') }
-  }
-
-  async function saveWeeklyGoal(minutes: number) {
-    const result = await setWeeklyGoal(minutes); setAnalytics(result.analytics); setMessage(result.message)
-  }
-
-  async function resetTrialProgress(confirmation: string) {
-    setError(''); setMessage('')
-    try {
-      const result = await resetPocProgress(confirmation)
-      const [loadedProgress, loadedPlan, loadedAnalytics] = await Promise.all([getProgress(), getPlan(), getAnalytics()])
-      setProgress(loadedProgress); setPlan(loadedPlan); setAnalytics(loadedAnalytics); setMessage(result.message)
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to reset trial progress.'); throw caught }
-  }
-
-  async function downloadStudentData() {
-    setError('')
-    try {
-      const data = await exportStudentData()
-      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
-      const link = document.createElement('a')
-      link.href = url; link.download = `gcse-revision-export-${new Date().toISOString().slice(0, 10)}.json`; link.click()
-      URL.revokeObjectURL(url)
-      setMessage('Student data export downloaded.')
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to export Student data.') }
-  }
-
-  async function saveException(input: { startDatetime: string; endDatetime: string; reason: string; availableMinutes: number; protectStreak: boolean }) {
+  async function saveException(input: { startDatetime: string; endDatetime: string; reason: string; availableSlots: number; protectStreak: boolean }) {
     try { const result = await addAvailabilityException(input); setPlan(result.sessions); setAnalytics(await getAnalytics()); setMessage(result.message) }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save the calendar exception.'); throw caught }
   }
@@ -234,12 +147,6 @@ export function Home({ user, onSignOut }: HomeProps) {
       const result = await saveExamRequest(input)
       setAnalytics(result.analytics); setPlan(result.sessions); setMessage(result.message)
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save the examination date.'); throw caught }
-  }
-
-  async function changeAiMarkingPreference(enabled: boolean) {
-    setError('')
-    try { const result = await setAiMarkingPreference(enabled); setAnalytics(result.analytics); setMessage(result.message) }
-    catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to update the AI marking preference.'); throw caught }
   }
 
   async function saveWeeklyAvailability(values: WeeklyAvailability[]) {
@@ -254,8 +161,8 @@ export function Home({ user, onSignOut }: HomeProps) {
       url.searchParams.delete('topic'); url.searchParams.delete('stage'); url.searchParams.delete('handoff')
       window.history.replaceState({}, '', url)
     }
-    setTopicDetail(null); setTopicRevision(null); setTopicLoading(false); setLessonReadOnly(false)
-    const fallback = previousView === 'lesson' ? 'content' : previousView
+    setTopicDetail(null); setTopicRevision(null); setTopicLoading(false)
+    const fallback = previousView === 'topic' ? 'subjects' : previousView
     if (window.history.state?.gcseRoute) window.history.back()
     else navigate(fallback, 'replace')
   }
@@ -269,10 +176,10 @@ export function Home({ user, onSignOut }: HomeProps) {
     setMoreOpen(false)
   }
 
-  if (view === 'lesson') return <main className="app-shell learning-shell" id="main-content">
-    {topicLoading ? <div className="lesson-loading card"><p className="loading-inline">Preparing your revision session…</p></div> : null}
-    {!topicLoading && topicDetail && topicRevision ? <LearningSession onBack={closeLesson} onKnowledgeCheck={saveKnowledgeCheck} onResult={assessFromTopic} recordResults={user.role === 'student' && !lessonReadOnly} reviewMode={lessonReadOnly} revision={topicRevision} topic={topicDetail} /> : null}
-    {!topicLoading && (!topicDetail || !topicRevision) ? <div className="card"><p className="error">The revision session could not be loaded.</p><button onClick={closeLesson} type="button">Back to the course</button></div> : null}
+  if (view === 'topic') return <main className="app-shell learning-shell" id="main-content">
+    {topicLoading ? <div className="lesson-loading card"><p className="loading-inline">Loading topic coverage and resources…</p></div> : null}
+    {!topicLoading && topicDetail && topicRevision ? <TopicSchedulePanel onBack={closeLesson} revision={topicRevision} topic={topicDetail} /> : null}
+    {!topicLoading && (!topicDetail || !topicRevision) ? <div className="card"><p className="error">The topic could not be loaded.</p><button onClick={closeLesson} type="button">Back to topics</button></div> : null}
   </main>
 
   return (
@@ -282,45 +189,32 @@ export function Home({ user, onSignOut }: HomeProps) {
       {user.role === 'student' ? <>
         <nav className="view-tabs view-tabs--student" aria-label="Main views" id="primary-navigation">
           <button aria-pressed={view === 'today'} onClick={() => navigate('today')} type="button">Today</button>
-          <button aria-pressed={view === 'content' || view === 'subjects'} onClick={() => navigate('content')} type="button">Learn</button>
-          <button aria-pressed={view === 'progress'} onClick={() => navigate('progress')} type="button">Progress</button>
+          <button aria-pressed={view === 'subjects'} onClick={() => navigate('subjects')} type="button">Topics</button>
           <button aria-pressed={view === 'week' || view === 'plan'} onClick={() => navigate('week')} type="button">Plan</button>
-          <button aria-expanded={moreOpen} aria-pressed={moreOpen || ['analytics', 'calendar', 'courses'].includes(view)} onClick={() => setMoreOpen((open) => !open)} type="button">More</button>
+          <button aria-expanded={moreOpen} aria-pressed={moreOpen || ['calendar', 'courses'].includes(view)} onClick={() => setMoreOpen((open) => !open)} type="button">More</button>
         </nav>
         {moreOpen ? <nav className="more-menu card" aria-label="More views">
-          <button className="secondary" onClick={() => navigate('analytics')} type="button">Analytics</button>
           <button className="secondary" onClick={() => navigate('calendar')} type="button">Calendar</button>
-          <button className="secondary" onClick={() => navigate('subjects')} type="button">Subject overview</button>
+          <button className="secondary" onClick={() => navigate('subjects')} type="button">Topic allocations</button>
           <button className="secondary" onClick={() => navigate('plan')} type="button">14-day plan</button>
           <button className="secondary" onClick={() => navigate('courses')} type="button">Course information</button>
           <button className="secondary" onClick={() => navigate('privacy')} type="button">Privacy and data</button>
           <button className="secondary" onClick={() => void onSignOut()} type="button">Sign out</button>
         </nav> : null}
       </> : <nav className="view-tabs" aria-label="Parent views" id="primary-navigation">
-        <button aria-pressed={view === 'parent'} onClick={() => navigate('parent')} type="button">Parent dashboard</button>
         <button aria-pressed={view === 'today'} onClick={() => navigate('today')} type="button">Today</button>
-        <button aria-pressed={view === 'progress'} onClick={() => navigate('progress')} type="button">Progress</button>
+        <button aria-pressed={view === 'subjects'} onClick={() => navigate('subjects')} type="button">Topics</button>
         <button aria-pressed={view === 'calendar'} onClick={() => navigate('calendar')} type="button">Calendar</button>
         <button aria-pressed={view === 'plan'} onClick={() => navigate('plan')} type="button">Plan</button>
         <button aria-pressed={view === 'courses'} onClick={() => navigate('courses')} type="button">Course setup</button>
         <button aria-pressed={view === 'privacy'} onClick={() => navigate('privacy')} type="button">Privacy</button>
       </nav>}
       {message ? <p className="success" role="status">{message}</p> : null}{error ? <div className="error error-with-action" role="alert"><span>{error}</span><button className="secondary" onClick={() => void loadDashboard()} type="button">Retry dashboard</button></div> : null}{loading ? <p className="loading-inline">Loading course data…</p> : null}
-      {!loading && view === 'parent' && analytics ? <ParentDashboard analytics={analytics} onAiMarking={changeAiMarkingPreference} onExport={downloadStudentData} onNavigate={(next) => navigate(next)} onResetProgress={resetTrialProgress} /> : null}
-      {!loading && view === 'today' ? <><TodayDashboard analytics={analytics} sessions={plan} topics={progress} editable={user.role === 'student'} onComplete={finishSession} onCannotDo={changeSessionStatus} onQuickRevision={beginQuickRevision} onReviewTopic={(id) => void openTopic(id, true)} onStart={beginPlannedSession} onViewTopic={(id) => void openTopic(id)} onOpenWeek={() => navigate('week')} />{analytics && (analytics.gamification.xp > 0 || analytics.gamification.weeklyCompletedMinutes > 0) ? <GamificationCard data={analytics.gamification} editable={user.role === 'student'} onGoal={saveWeeklyGoal} /> : null}</> : null}
-      {!loading && view === 'week' ? <WeeklyPlanner editable={user.role === 'student'} sessions={plan} topics={progress} onComplete={finishSession} onMove={changeSessionStatus} onReplan={requestReplan} onReviewTopic={(id) => void openTopic(id, true)} onViewTopic={(id) => void openTopic(id)} /> : null}
-      {!loading && view === 'subjects' ? <SubjectBrowser analytics={analytics} subjects={subjects} topics={progress} sessions={plan} onViewTopic={(id) => void openTopic(id)} /> : null}
-      {!loading && view === 'plan' ? <PlanDashboard availability={availability} onAvailability={saveWeeklyAvailability} onCannotDo={changeSessionStatus} onComplete={finishSession} onGenerate={buildPlan} onReviewTopic={(id) => void openTopic(id, true)} onViewTopic={(id) => void openTopic(id)} sessions={plan} studentMode={user.role === 'student'} /> : null}
-      {!loading && view === 'progress' ? <ProgressDashboard editable={user.role === 'student'} onAssessment={saveAssessment} onConfidence={saveConfidence} onPractice={(id) => void openTopic(id)} topics={progress} /> : null}
-      {!loading && view === 'analytics' && analytics ? <AnalyticsDashboard analytics={analytics} /> : null}
+      {!loading && view === 'today' ? <TodayDashboard sessions={plan} topics={progress} editable={user.role === 'student'} onComplete={finishSession} onCannotDo={changeSessionStatus} onViewTopic={(id) => void openTopic(id)} onOpenWeek={() => navigate('week')} /> : null}
+      {!loading && view === 'week' ? <WeeklyPlanner editable={user.role === 'student'} sessions={plan} topics={progress} onComplete={finishSession} onMove={changeSessionStatus} onReplan={requestReplan} onViewTopic={(id) => void openTopic(id)} /> : null}
+      {!loading && view === 'subjects' ? <SubjectBrowser editable={user.role === 'parent'} onTarget={saveTopicTarget} subjects={subjects} topics={progress} sessions={plan} onViewTopic={(id) => void openTopic(id)} /> : null}
+      {!loading && view === 'plan' ? <PlanDashboard availability={availability} onAvailability={saveWeeklyAvailability} onCannotDo={changeSessionStatus} onComplete={finishSession} onGenerate={buildPlan} onViewTopic={(id) => void openTopic(id)} sessions={plan} studentMode={user.role === 'student'} topics={progress} /> : null}
       {!loading && view === 'calendar' && analytics ? <CalendarDashboard analytics={analytics} availability={availability} editable={user.role === 'parent'} onException={saveException} onExam={saveExam} sessions={plan} subjects={subjects} /> : null}
-      {!loading && view === 'content' ? <>
-        {nextLearningSession ? <section className="learn-next card" aria-labelledby="learn-next-heading"><div><p className="eyebrow">Planned next</p><h2 id="learn-next-heading">Continue with {nextLearningSession.topicName}</h2><p>{nextLearningSession.subjectName} · {nextLearningSession.plannedMinutes} minutes. Start here, or choose another subject below.</p></div><button onClick={() => nextLearningSession.topicId && void beginPlannedSession(nextLearningSession.id, nextLearningSession.topicId)} type="button">Start planned session</button></section> : null}
-        <label className="subject-picker">Choose a subject<select onChange={(event) => setSelectedSubjectId(event.target.value)} value={selectedSubjectId}>{activeSubjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
-        <div className="subject-tabs" aria-label="Choose a subject">{activeSubjects.map((subject) => <button aria-pressed={selectedSubjectId === subject.id} key={subject.id} onClick={() => setSelectedSubjectId(subject.id)} type="button">{subject.name}</button>)}</div>
-        <RevisionSubjectGuide examBoard={subjects.find((subject) => subject.id === selectedSubjectId)?.examBoard ?? 'exam-board'} guide={subjectGuide} loading={guideLoading} />
-        <SubjectPreview onTopic={(id) => void openTopic(id)} subject={subjects.find((subject) => subject.id === selectedSubjectId)} />
-      </> : null}
       {!loading && view === 'courses' ? <CourseSetup editable={user.role === 'parent'} onSave={saveCourse} subjects={subjects} /> : null}
       {!loading && view === 'privacy' ? <PrivacyNotice /> : null}
     </main>

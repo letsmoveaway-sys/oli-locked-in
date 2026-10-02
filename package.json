@@ -20,6 +20,8 @@
     "db:seed:local": "wrangler d1 execute gcse-revision-db --local --file database/seed/development.sql && wrangler d1 execute gcse-revision-db --local --file database/seed/phase4_planner.sql",
     "db:migrate:remote": "wrangler d1 migrations apply gcse-revision-db --remote",
     "db:seed:remote": "wrangler d1 execute gcse-revision-db --remote --file database/seed/development.sql && wrangler d1 execute gcse-revision-db --remote --file database/seed/phase4_planner.sql",
+    "checklist:generate": "node scripts/generate-curriculum-checklist.mjs",
+    "checklist:validate": "node scripts/validate-curriculum-checklist.mjs && node scripts/validate-curriculum-checklist-excel.mjs",
     "deploy": "npm run build && wrangler deploy -c dist/gcse_revision/wrangler.json",
     "auth:hash": "tsx scripts/hash-password.ts"
   },
@@ -40,6 +42,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "exceljs": "^4.4.0",
     "jsdom": "30.0.1",
     "tsx": "4.23.13",
     "typescript": "7.0.2",

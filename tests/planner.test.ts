@@ -25,6 +25,9 @@ function topic(overrides: Partial<PlannerTopic> = {}): PlannerTopic {
     importance: 1,
     manualPriority: null,
     requestedMore: false,
+    targetSessions: 5,
+    completedSessions: 0,
+    coverageComplete: false,
     ...overrides,
   }
 }
@@ -33,7 +36,7 @@ function context(overrides: Partial<PlannerContext> = {}): PlannerContext {
   return {
     today: '2026-09-16',
     defaultSessionMinutes: 35,
-    availability: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({ weekday, availableMinutes: 70, startTime: '17:00' })),
+    availability: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({ weekday, availableSlots: 2 })),
     exceptions: [],
     tutors: [],
     exams: [],
@@ -73,7 +76,7 @@ describe('adaptive planner', () => {
     const plan = generateRevisionPlan(context({
       exceptions: [{
         startDatetime: '2026-09-17T00:00:00.000Z', endDatetime: '2026-09-19T23:59:59.999Z',
-        availableMinutes: 0, protectStreak: true, reason: 'Illness',
+        availableSlots: 0, protectStreak: true, reason: 'Illness',
       }],
     }), 5)
     expect(plan.filter((session) => session.scheduledAt.slice(0, 10) >= '2026-09-17' && session.scheduledAt.slice(0, 10) <= '2026-09-19')).toHaveLength(0)
@@ -94,7 +97,7 @@ describe('adaptive planner', () => {
   it('reduces additional Maths scheduling on a Maths tutor Tuesday', () => {
     const plan = generateRevisionPlan(context({
       today: '2026-09-22',
-      availability: [{ weekday: 2, availableMinutes: 105, startTime: '17:00' }],
+      availability: [{ weekday: 2, availableSlots: 3 }],
       topics: [topic(), topic({ id: 'topic-science', subjectId: 'science', subjectName: 'Science', name: 'Cells' })],
       tutors: [{ id: 'maths-tutor', date: '2026-09-22', subjectId: 'maths', subjectName: 'Mathematics', startTime: '18:00', durationMinutes: 60 }],
     }), 1)
@@ -104,7 +107,7 @@ describe('adaptive planner', () => {
 
   it('mixes subjects within a day even when one topic has much higher priority', () => {
     const plan = generateRevisionPlan(context({
-      availability: [{ weekday: 3, availableMinutes: 105, startTime: '17:00' }],
+      availability: [{ weekday: 3, availableSlots: 3 }],
       topics: [
         topic({ latestAssessment: 10, requestedMore: true }),
         topic({ id: 'topic-science', subjectId: 'science', subjectName: 'Science', name: 'Cells', masteryScore: 85, ragStatus: 'green', latestAssessment: 90 }),
@@ -119,7 +122,7 @@ describe('adaptive planner', () => {
 
   it('uses a different topic before repeating within the same subject', () => {
     const plan = generateRevisionPlan(context({
-      availability: [{ weekday: 3, availableMinutes: 70, startTime: '17:00' }],
+      availability: [{ weekday: 3, availableSlots: 2 }],
       topics: [
         topic({ latestAssessment: 10, requestedMore: true }),
         topic({ id: 'topic-geometry', name: 'Geometry', masteryScore: 85, ragStatus: 'green', latestAssessment: 90 }),
@@ -144,18 +147,15 @@ describe('adaptive planner', () => {
     expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1)
   })
 
-  it('adds a due spaced-retrieval item to a later learning session', () => {
+  it('schedules a follow-up while coverage points remain open', () => {
     const plan = generateRevisionPlan(context({
-      availability: [{ weekday: 3, availableMinutes: 35, startTime: '17:00' }],
-      topics: [
-        topic({ masteryScore: 60, ragStatus: 'amber', lastRevisedAt: '2026-09-12T17:00:00.000Z', nextReviewAt: '2026-09-16T17:00:00.000Z' }),
-        topic({ id: 'topic-science', subjectId: 'science', subjectName: 'Science', name: 'Cells', masteryScore: null, ragStatus: 'grey' }),
-      ],
+      availability: [{ weekday: 3, availableSlots: 1 }],
+      topics: [topic({ targetSessions: 1, completedSessions: 1, coverageComplete: false })],
     }), 1).filter((session) => session.source === 'generated')
 
-    expect(plan[0]?.topicId).toBe('topic-science')
-    expect(plan[0]?.sessionType).toBe('Learning + spaced review')
-    expect(plan[0]?.reviewItems).toMatchObject([{ topicId: 'topic-maths', plannedMinutes: 8 }])
+    expect(plan[0]?.topicId).toBe('topic-maths')
+    expect(plan[0]?.sessionType).toBe('Revision topic')
+    expect(plan[0]?.plannerReason).toContain('coverage points still open')
   })
 
   it('does not duplicate a persisted recurring tutor occurrence', () => {
@@ -172,32 +172,30 @@ describe('adaptive planner', () => {
     expect(plan.filter((session) => session.id === existingTutor.id)).toHaveLength(1)
   })
 
-  it('increases priority after a weak assessment', () => {
-    const weak = topic({ latestAssessment: 35 })
-    const neutral = topic({ latestAssessment: 65 })
-    expect(calculateTopicPriority(weak, { today: '2026-09-16', exams: [] })).toBeGreaterThan(
-      calculateTopicPriority(neutral, { today: '2026-09-16', exams: [] }),
+  it('increases priority when more allocated sessions remain', () => {
+    const largerAllocation = topic({ targetSessions: 8, completedSessions: 0 })
+    const smallerAllocation = topic({ targetSessions: 8, completedSessions: 6 })
+    expect(calculateTopicPriority(largerAllocation, { today: '2026-09-16', exams: [] })).toBeGreaterThan(
+      calculateTopicPriority(smallerAllocation, { today: '2026-09-16', exams: [] }),
     )
   })
 
-  it('reduces immediate priority after strong evidence while retaining maintenance workload', () => {
-    const strong = topic({ masteryScore: 88, ragStatus: 'green', latestAssessment: 90, lastRevisedAt: '2026-09-15T12:00:00.000Z' })
-    const weak = topic({ latestAssessment: 40 })
-    expect(calculateTopicPriority(strong, { today: '2026-09-16', exams: [] })).toBeLessThan(
-      calculateTopicPriority(weak, { today: '2026-09-16', exams: [] }),
-    )
-    expect(calculateRemainingWorkload(strong)).toBeGreaterThan(0)
+  it('stops scheduling completed allocations but retains an unfinished-coverage follow-up', () => {
+    const complete = topic({ targetSessions: 2, completedSessions: 2, coverageComplete: true })
+    const unfinished = topic({ targetSessions: 2, completedSessions: 2, coverageComplete: false })
+    expect(calculateRemainingWorkload(complete)).toBe(0)
+    expect(calculateRemainingWorkload(unfinished)).toBe(1)
   })
 
   it('redistributes work when Saturday capacity is reduced', () => {
-    const full = generateRevisionPlan(context({ today: '2026-09-19', availability: [{ weekday: 6, availableMinutes: 105, startTime: '10:00' }] }), 1)
-    const reduced = generateRevisionPlan(context({ today: '2026-09-19', availability: [{ weekday: 6, availableMinutes: 35, startTime: '10:00' }] }), 1)
+    const full = generateRevisionPlan(context({ today: '2026-09-19', availability: [{ weekday: 6, availableSlots: 3 }] }), 1)
+    const reduced = generateRevisionPlan(context({ today: '2026-09-19', availability: [{ weekday: 6, availableSlots: 1 }] }), 1)
     expect(reduced.filter((session) => session.source === 'generated').length).toBeLessThan(full.filter((session) => session.source === 'generated').length)
   })
 
-  it('uses the study-block length chosen for that day and leaves a break between blocks', () => {
+  it('uses the number of revision slots chosen for that day', () => {
     const plan = generateRevisionPlan(context({
-      availability: [{ weekday: 3, availableMinutes: 60, sessionMinutes: 20, startTime: '17:00' }],
+      availability: [{ weekday: 3, availableSlots: 3 }],
       topics: [
         topic(),
         topic({ id: 'topic-science', subjectId: 'science', subjectName: 'Science', name: 'Cells' }),
@@ -206,8 +204,7 @@ describe('adaptive planner', () => {
     }), 1).filter((session) => session.source === 'generated')
 
     expect(plan).toHaveLength(3)
-    expect(plan.every((session) => session.plannedMinutes === 20)).toBe(true)
-    expect(plan.slice(1).map((session, index) => Date.parse(session.scheduledAt) - Date.parse(plan[index]!.scheduledAt))).toEqual([30 * 60_000, 30 * 60_000])
+    expect(plan.every((session) => session.plannedMinutes === 1)).toBe(true)
   })
 
   it('preserves a locked manual session during replanning', () => {

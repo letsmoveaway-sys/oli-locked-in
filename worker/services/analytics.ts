@@ -49,8 +49,8 @@ export async function getAnalytics(user: SessionUser, env: Env, today = productD
       .bind(studentId, `${addDays(today, -365)}T00:00:00.000Z`, `${futureEnd}T23:59:59.999Z`).all<SessionRow>(),
     env.DB.prepare('SELECT xp, level, weekly_goal_minutes, ai_marking_enabled FROM student_profiles WHERE user_id = ?').bind(studentId).first<{ xp: number; level: number; weekly_goal_minutes: number; ai_marking_enabled: number }>(),
     env.DB.prepare('SELECT event_type, points, created_at FROM xp_events WHERE student_id = ? ORDER BY created_at DESC LIMIT 12').bind(studentId).all<{ event_type: string; points: number; created_at: string }>(),
-    env.DB.prepare('SELECT start_datetime, end_datetime, reason, available_minutes, protect_streak FROM availability_exceptions WHERE student_id = ? AND end_datetime >= ? ORDER BY start_datetime')
-      .bind(studentId, `${addDays(today, -365)}T00:00:00.000Z`).all<{ start_datetime: string; end_datetime: string; reason: string; available_minutes: number | null; protect_streak: number }>(),
+    env.DB.prepare('SELECT start_datetime, end_datetime, reason, available_slots, protect_streak FROM availability_exceptions WHERE student_id = ? AND end_datetime >= ? ORDER BY start_datetime')
+      .bind(studentId, `${addDays(today, -365)}T00:00:00.000Z`).all<{ start_datetime: string; end_datetime: string; reason: string; available_slots: number | null; protect_streak: number }>(),
     env.DB.prepare(`SELECT e.id, e.subject_id, e.component, e.exam_datetime, e.duration_minutes, e.exam_board,
       e.confirmed, e.source, e.last_verified_at, e.event_kind, s.name AS subject_name
       FROM exams e JOIN subjects s ON s.id = e.subject_id
@@ -172,7 +172,7 @@ export async function getAnalytics(user: SessionUser, env: Env, today = productD
       confirmed: item.confirmed === 1, source: item.source, lastVerifiedAt: item.last_verified_at,
       eventKind: item.event_kind,
     })),
-    exceptions: exceptionsResult.results.filter((item) => dateOnly(item.end_datetime) >= today).map((item) => ({ startDatetime: item.start_datetime, endDatetime: item.end_datetime, reason: item.reason, availableMinutes: item.available_minutes ?? 0, protectsStreak: item.protect_streak === 1 })),
+    exceptions: exceptionsResult.results.filter((item) => dateOnly(item.end_datetime) >= today).map((item) => ({ startDatetime: item.start_datetime, endDatetime: item.end_datetime, reason: item.reason, availableSlots: item.available_slots ?? 0, protectsStreak: item.protect_streak === 1 })),
     gamification: { xp, level, levelProgress: xp % 100, weeklyGoalMinutes: weeklyGoal, weeklyCompletedMinutes: completedMinutes, streak, achievements, recentXp: xpResult.results.map((item) => ({ eventType: item.event_type, points: item.points, createdAt: item.created_at })) },
   }
 }

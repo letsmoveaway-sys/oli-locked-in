@@ -11,7 +11,7 @@ import {
   updateCourseConfiguration,
   validateCourseConfiguration,
 } from '../services/curriculum'
-import { addAssessment, getProgress, getTopicDetail, setConfidence } from '../services/progress'
+import { addAssessment, getProgress, getTopicDetail, setConfidence, setTopicScheduleTarget } from '../services/progress'
 import { generateRevisionPlan, replanAfterChange } from '../services/planner'
 import {
   addAvailabilityException,
@@ -144,6 +144,23 @@ async function handleProgress(request: Request, env: Env): Promise<Response> {
   const user = await requireSession(request, env.SESSION_SECRET)
   if (!user) return apiError('UNAUTHENTICATED', 'Sign in to continue.', 401)
   return json({ topics: await getProgress(user, env) })
+}
+
+async function handleTopicScheduleTarget(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'PUT') return methodNotAllowed()
+  if (!sameOrigin(request)) return apiError('INVALID_ORIGIN', 'The request origin was rejected.', 403)
+  const user = await requireSession(request, env.SESSION_SECRET, 'parent')
+  if (!user) return apiError('FORBIDDEN', 'This operation requires a Parent account.', 403)
+  const body = await readJsonObject(request)
+  const topicId = typeof body?.topicId === 'string' ? body.topicId : ''
+  const targetSessions = Number(body?.targetSessions)
+  if (!topicId || !Number.isInteger(targetSessions) || targetSessions < 0 || targetSessions > 100) {
+    return apiError('INVALID_REQUEST', 'Choose between 0 and 100 sessions for this topic.', 400)
+  }
+  if (!(await setTopicScheduleTarget(user, topicId, targetSessions, env))) return apiError('NOT_FOUND', 'Topic not found.', 404)
+  const context = await loadPlannerContext(user, env)
+  if (context) await savePlan(user, generateRevisionPlan(context, 14), env, context.today)
+  return json({ topics: await getProgress(user, env), sessions: await getSavedPlan(user, env), message: 'Topic allocation updated.' })
 }
 
 async function handleAnalytics(request: Request, env: Env): Promise<Response> {
@@ -357,17 +374,15 @@ async function handleAvailability(request: Request, env: Env): Promise<Response>
   const body = await readJsonObject(request)
   const raw = body?.availability
   if (!Array.isArray(raw) || raw.length !== 7) return apiError('INVALID_REQUEST', 'Provide all seven availability days.', 400)
-  const values = raw.map((item): { weekday: number; availableMinutes: number; startTime: string | null; sessionMinutes: number } | null => {
+  const values = raw.map((item): { weekday: number; availableSlots: number; startTime: string | null } | null => {
     if (!item || typeof item !== 'object') return null
     const row = item as Record<string, unknown>
-    if (!Number.isInteger(row.weekday) || Number(row.weekday) < 1 || Number(row.weekday) > 7 || !Number.isInteger(row.availableMinutes) || Number(row.availableMinutes) < 0 || Number(row.availableMinutes) > 360) return null
+    if (!Number.isInteger(row.weekday) || Number(row.weekday) < 1 || Number(row.weekday) > 7 || !Number.isInteger(row.availableSlots) || Number(row.availableSlots) < 0 || Number(row.availableSlots) > 12) return null
     const startTime = typeof row.startTime === 'string' && /^\d{2}:\d{2}$/.test(row.startTime) ? row.startTime : null
-    const sessionMinutes = Number(row.sessionMinutes ?? 35)
-    if (!Number.isInteger(sessionMinutes) || sessionMinutes < 5 || sessionMinutes > 60) return null
-    return { weekday: Number(row.weekday), availableMinutes: Number(row.availableMinutes), startTime, sessionMinutes }
+    return { weekday: Number(row.weekday), availableSlots: Number(row.availableSlots), startTime }
   })
   if (values.some((value) => value === null)) return apiError('INVALID_REQUEST', 'Availability values are invalid.', 400)
-  await updateAvailability(user, values as Array<{ weekday: number; availableMinutes: number; startTime: string | null; sessionMinutes: number }>, env)
+  await updateAvailability(user, values as Array<{ weekday: number; availableSlots: number; startTime: string | null }>, env)
   return json({ availability: await getAvailability(user, env) })
 }
 
@@ -380,12 +395,12 @@ async function handleAvailabilityException(request: Request, env: Env): Promise<
   const startDatetime = typeof body?.startDatetime === 'string' ? body.startDatetime : ''
   const endDatetime = typeof body?.endDatetime === 'string' ? body.endDatetime : ''
   const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
-  const availableMinutes = typeof body?.availableMinutes === 'number' ? body.availableMinutes : Number.NaN
+  const availableSlots = typeof body?.availableSlots === 'number' ? body.availableSlots : Number.NaN
   const protectStreak = body?.protectStreak === true
-  if (!startDatetime || !endDatetime || endDatetime <= startDatetime || !reason || reason.length > 100 || !Number.isInteger(availableMinutes) || availableMinutes < 0 || availableMinutes > 360) {
+  if (!startDatetime || !endDatetime || endDatetime <= startDatetime || !reason || reason.length > 100 || !Number.isInteger(availableSlots) || availableSlots < 0 || availableSlots > 12) {
     return apiError('INVALID_REQUEST', 'Availability exception is invalid.', 400)
   }
-  await addAvailabilityException(user, { startDatetime, endDatetime, reason, availableMinutes, protectStreak }, env)
+  await addAvailabilityException(user, { startDatetime, endDatetime, reason, availableSlots, protectStreak }, env)
   const context = await loadPlannerContext(user, env)
   if (!context) return apiError('NOT_FOUND', 'Student planning profile not found.', 404)
   const result = replanAfterChange('Availability changed', context)
@@ -435,35 +450,16 @@ async function handleSessionComplete(request: Request, env: Env): Promise<Respon
   if (!user) return apiError('FORBIDDEN', 'This operation requires a Student account.', 403)
   const body = await readJsonObject(request)
   const sessionId = typeof body?.sessionId === 'string' ? body.sessionId : ''
-  const actualMinutes = Number(body?.actualMinutes)
-  const confidenceValues = ['unknown', 'struggling', 'ok', 'confident'] as const
-  const confidenceAfter = typeof body?.confidenceAfter === 'string' ? body.confidenceAfter : ''
-  const assessmentPercentage = body?.assessmentPercentage === null || body?.assessmentPercentage === undefined
-    ? null : Number(body.assessmentPercentage)
   const notes = typeof body?.notes === 'string' ? body.notes.trim() : ''
-  const reviewResults = Array.isArray(body?.reviewResults) ? body.reviewResults.map((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return null
-    const value = item as Record<string, unknown>
-    const percentage = value.percentage === null || value.percentage === undefined || value.percentage === ''
-      ? null : Number(value.percentage)
-    return typeof value.topicId === 'string' ? { topicId: value.topicId, percentage } : null
-  }) : []
-  if (
-    !sessionId || !Number.isInteger(actualMinutes) || actualMinutes < 1 || actualMinutes > 360 ||
-    !confidenceValues.some((value) => value === confidenceAfter) ||
-    (assessmentPercentage !== null && (!Number.isFinite(assessmentPercentage) || assessmentPercentage < 0 || assessmentPercentage > 100)) ||
-    notes.length > 1000 || reviewResults.length > 3 || reviewResults.some((item) => !item ||
-      item.topicId.length > 100 || (item.percentage !== null &&
-        (!Number.isFinite(item.percentage) || item.percentage < 0 || item.percentage > 100)))
-  ) return apiError('INVALID_REQUEST', 'Enter valid completion details.', 400)
+  const coveredItemIds = Array.isArray(body?.coveredItemIds)
+    ? [...new Set(body.coveredItemIds.filter((item): item is string => typeof item === 'string' && item.length <= 160))]
+    : []
+  if (!sessionId || notes.length > 1000 || coveredItemIds.length > 100) return apiError('INVALID_REQUEST', 'Enter valid completion details.', 400)
 
   const saved = await completeSession(user, {
     sessionId,
-    actualMinutes,
-    confidenceAfter: confidenceAfter as typeof confidenceValues[number],
-    assessmentPercentage,
+    coveredItemIds,
     notes,
-    reviewResults: reviewResults as Array<{ topicId: string; percentage: number | null }>,
   }, env)
   if (!saved) return apiError('NOT_FOUND', 'Planned revision session not found.', 404)
   const context = await loadPlannerContext(user, env)
@@ -562,6 +558,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
   if (path === '/api/subjects') return handleSubjects(request, env)
   if (path === '/api/parent/course-configuration') return handleCourseConfiguration(request, env)
   if (path === '/api/progress') return handleProgress(request, env)
+  if (path === '/api/scheduling/topic-target') return handleTopicScheduleTarget(request, env)
   if (path === '/api/analytics') return handleAnalytics(request, env)
   if (path === '/api/gamification/weekly-goal') return handleWeeklyGoal(request, env)
   if (path === '/api/topics/detail') return handleTopicDetail(request, env)
