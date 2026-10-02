@@ -37,10 +37,17 @@ describe('Phase 5 student experience', () => {
     expect(screen.getByLabelText('Factorise expressions')).toBeInTheDocument()
   })
 
-  it('renders the seven-day planner with move controls', () => {
-    render(<WeeklyPlanner sessions={[session]} topics={[topic]} onComplete={vi.fn()} onMove={vi.fn()} onReplan={vi.fn()} onViewTopic={vi.fn()} />)
+  it('navigates from the current week to future scheduled weeks', () => {
+    const futureDate = new Date(`${today}T12:00:00Z`)
+    futureDate.setUTCDate(futureDate.getUTCDate() + 7)
+    const futureSession = { ...session, id: 'session-next-week', topicName: 'Geometry', scheduledAt: `${futureDate.toISOString().slice(0, 10)}T17:00:00.000Z` }
+    render(<WeeklyPlanner sessions={[session, futureSession]} topics={[topic]} onComplete={vi.fn()} onMove={vi.fn()} onReplan={vi.fn()} onViewTopic={vi.fn()} />)
     expect(screen.getAllByText(/Rest \/ unavailable|Mathematics/).length).toBeGreaterThanOrEqual(7)
     expect(screen.getByRole('button', { name: 'Postpone / swap' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next week â†’' }))
+    expect(screen.getByRole('heading', { name: 'Next week' })).toBeInTheDocument()
+    expect(screen.getByText('Geometry')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'â† Previous week' })).toBeEnabled()
   })
 
   it('keeps coverage and useful materials available after completion', () => {

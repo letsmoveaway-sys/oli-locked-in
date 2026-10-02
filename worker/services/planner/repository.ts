@@ -3,6 +3,7 @@ import { productDateKey } from '../../utils/dateTime'
 import { recalculateTopicMastery } from '../progress'
 import { awardSessionXp, checkWeeklyGoal } from '../gamification'
 import { buildCoverageItems } from '../../content/coverage'
+import { PLANNING_HORIZON_DAYS } from './planner'
 import type {
   PlannedSession,
   PlannedReviewItem,
@@ -74,7 +75,7 @@ function tutorOccurrences(rows: TutorRow[], from: string, horizonDays: number): 
 export async function loadPlannerContext(user: SessionUser, env: Env, today = productDateKey()): Promise<PlannerContext | null> {
   const profile = await profileFor(user, env)
   if (!profile) return null
-  const end = `${addDays(today, 13)}T23:59:59.999Z`
+  const end = `${addDays(today, PLANNING_HORIZON_DAYS - 1)}T23:59:59.999Z`
   const [availability, exceptions, tutors, exams, topics, sessions, coverage] = await Promise.all([
     env.DB.prepare('SELECT weekday, available_slots, start_time FROM weekly_availability WHERE student_id = ? AND active = 1 ORDER BY weekday').bind(profile.user_id).all<AvailabilityRow>(),
     env.DB.prepare('SELECT start_datetime, end_datetime, available_slots, available_minutes, protect_streak, reason FROM availability_exceptions WHERE student_id = ? AND end_datetime >= ? AND start_datetime <= ?').bind(profile.user_id, `${today}T00:00:00.000Z`, end).all<ExceptionRow>(),
@@ -120,7 +121,7 @@ export async function loadPlannerContext(user: SessionUser, env: Env, today = pr
     defaultSessionMinutes: profile.default_session_minutes,
     availability: availability.results.map((row): PlannerAvailability => ({ weekday: row.weekday, availableSlots: row.available_slots, startTime: row.start_time })),
     exceptions: exceptions.results.map((row): PlannerException => ({ startDatetime: row.start_datetime, endDatetime: row.end_datetime, availableSlots: row.available_slots ?? ((row.available_minutes ?? 0) > 0 ? 1 : 0), protectStreak: row.protect_streak === 1, reason: row.reason })),
-    tutors: tutorOccurrences(tutors.results, today, 14),
+    tutors: tutorOccurrences(tutors.results, today, PLANNING_HORIZON_DAYS),
     exams: exams.results.map((row): PlannerExam => ({ subjectId: row.subject_id, examDatetime: row.exam_datetime })),
     topics: topics.results.map((row): PlannerTopic => {
       const coverageItems = buildCoverageItems({ id: row.id, name: row.name, description: row.description })
@@ -146,7 +147,9 @@ export async function savePlan(user: SessionUser, sessions: PlannedSession[], en
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
     ).bind(session.id, profile.user_id, session.topicId, session.subjectId, session.scheduledAt, session.startedAt ?? null, session.plannedMinutes, session.sessionType, session.status, session.plannerReason, session.source, session.locked ? 1 : 0, JSON.stringify(session.reviewItems ?? []))),
   ]
-  await env.DB.batch(statements)
+  for (let index = 0; index < statements.length; index += 75) {
+    await env.DB.batch(statements.slice(index, index + 75))
+  }
 }
 
 export async function getSavedPlan(user: SessionUser, env: Env, today = productDateKey()): Promise<PlannedSession[]> {

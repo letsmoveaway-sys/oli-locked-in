@@ -1,6 +1,8 @@
 import type { RagStatus } from './mastery'
 import { productLocalDateTimeToIso } from '../../utils/dateTime'
 
+export const PLANNING_HORIZON_DAYS = 42
+
 export interface PlannerTopic {
   id: string
   subjectId: string
@@ -166,7 +168,7 @@ function sessionTime(date: string, startTime: string | null | undefined, index: 
   return productLocalDateTimeToIso(value.toISOString().slice(0, 16))
 }
 
-export function generateRevisionPlan(context: PlannerContext, horizonDays = 14): PlannedSession[] {
+export function generateRevisionPlan(context: PlannerContext, horizonDays = PLANNING_HORIZON_DAYS): PlannedSession[] {
   const end = addDays(context.today, horizonDays - 1)
   const preserved = context.existingSessions.filter((session) => {
     const date = dateOnly(session.scheduledAt)
@@ -303,7 +305,7 @@ export function generateRevisionPlan(context: PlannerContext, horizonDays = 14):
 }
 
 export function replanAfterChange(change: string, context: PlannerContext): { sessions: PlannedSession[]; message: string; change: string } {
-  return { sessions: generateRevisionPlan(context, 14), message: 'Your plan has been adjusted.', change }
+  return { sessions: generateRevisionPlan(context), message: 'Your six-week schedule has been adjusted.', change }
 }
 
 export function calculateBurndown(context: PlannerContext, horizonDays = 14): Array<{ date: string; idealRemaining: number }> {

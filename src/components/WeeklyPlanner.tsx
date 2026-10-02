@@ -26,14 +26,27 @@ export function WeeklyPlanner({ sessions, topics, onMove, onComplete, onReplan, 
   const mondayOffset = (today.getUTCDay() + 6) % 7
   const monday = new Date(today)
   monday.setUTCDate(today.getUTCDate() - mondayOffset)
-  const start = monday.toISOString().slice(0, 10)
+  const currentWeekStart = monday.toISOString().slice(0, 10)
+  const [weekOffset, setWeekOffset] = useState(0)
+  const start = addDays(currentWeekStart, weekOffset * 7)
   const days = Array.from({ length: 7 }, (_, index) => addDays(start, index))
+  const end = days.at(-1)!
+  const scheduleEnd = addDays(todayKey, 41)
+  const canMoveForward = addDays(start, 7) <= scheduleEnd
+  const weekHeading = weekOffset === 0 ? 'This week' : weekOffset === 1 ? 'Next week' : `Week of ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long' }).format(new Date(`${start}T12:00:00Z`))}`
+  const weekRange = `${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(`${start}T12:00:00Z`))} â€“ ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${end}T12:00:00Z`))}`
   const [activeSession, setActiveSession] = useState<PlanSession | null>(null)
   const [blockedSession, setBlockedSession] = useState<PlanSession | null>(null)
 
   return (
     <section aria-labelledby="week-heading">
-      <div className="section-heading"><div><p className="eyebrow">A realistic week at a glance</p><h2 id="week-heading">This week</h2></div>{editable ? <button onClick={() => void onReplan()} type="button">Rebuild my week</button> : null}</div>
+      <div className="section-heading"><div><p className="eyebrow">Six-week revision schedule</p><h2 id="week-heading">{weekHeading}</h2><p className="week-range">{weekRange}</p></div>{editable ? <button onClick={() => void onReplan()} type="button">Rebuild six-week schedule</button> : null}</div>
+      <nav aria-label="Choose schedule week" className="week-navigation">
+        <button className="secondary" disabled={weekOffset === 0} onClick={() => setWeekOffset((value) => Math.max(0, value - 1))} type="button">â† Previous week</button>
+        <button className="secondary" disabled={weekOffset === 0} onClick={() => setWeekOffset(0)} type="button">Current week</button>
+        <span>Week {weekOffset + 1}</span>
+        <button disabled={!canMoveForward} onClick={() => setWeekOffset((value) => value + 1)} type="button">Next week â†’</button>
+      </nav>
       <div className="week-grid">
         {days.map((date) => {
           const items = sessions.filter((session) => productDateKey(new Date(session.scheduledAt)) === date)
@@ -54,7 +67,7 @@ export function WeeklyPlanner({ sessions, topics, onMove, onComplete, onReplan, 
           )
         })}
       </div>
-      <p className="planner-note">Postponing a slot releases it and rebuilds the remaining schedule around exam dates, capacity and unfinished coverage.</p>
+      <p className="planner-note">Use Previous week and Next week to review the full six-week schedule. Postponing a slot rebuilds the remaining schedule around exam dates, capacity and unfinished coverage.</p>
       {activeSession ? <SessionCompletionDialog onClose={() => setActiveSession(null)} onComplete={onComplete} session={activeSession} topic={topics.find((topic) => topic.topicId === activeSession.topicId)} /> : null}
       {blockedSession ? <CannotDoDialog onClose={() => setBlockedSession(null)} onSubmit={onMove} session={blockedSession} /> : null}
     </section>

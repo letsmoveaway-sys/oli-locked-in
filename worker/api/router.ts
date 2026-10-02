@@ -159,7 +159,7 @@ async function handleTopicScheduleTarget(request: Request, env: Env): Promise<Re
   }
   if (!(await setTopicScheduleTarget(user, topicId, targetSessions, env))) return apiError('NOT_FOUND', 'Topic not found.', 404)
   const context = await loadPlannerContext(user, env)
-  if (context) await savePlan(user, generateRevisionPlan(context, 14), env, context.today)
+  if (context) await savePlan(user, generateRevisionPlan(context), env, context.today)
   return json({ topics: await getProgress(user, env), sessions: await getSavedPlan(user, env), message: 'Topic allocation updated.' })
 }
 
@@ -345,9 +345,9 @@ async function handlePlanner(request: Request, env: Env): Promise<Response> {
   if (!sameOrigin(request)) return apiError('INVALID_ORIGIN', 'The request origin was rejected.', 403)
   const context = await loadPlannerContext(user, env)
   if (!context) return apiError('NOT_FOUND', 'Student planning profile not found.', 404)
-  const sessions = generateRevisionPlan(context, 14)
+  const sessions = generateRevisionPlan(context)
   await savePlan(user, sessions, env, context.today)
-  return json({ sessions, message: 'Your 14-day plan is ready.' }, 201)
+  return json({ sessions, message: 'Your six-week schedule is ready.' }, 201)
 }
 
 async function handleReplan(request: Request, env: Env): Promise<Response> {

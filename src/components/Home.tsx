@@ -196,7 +196,7 @@ export function Home({ user, onSignOut }: HomeProps) {
         {moreOpen ? <nav className="more-menu card" aria-label="More views">
           <button className="secondary" onClick={() => navigate('calendar')} type="button">Calendar</button>
           <button className="secondary" onClick={() => navigate('subjects')} type="button">Topic allocations</button>
-          <button className="secondary" onClick={() => navigate('plan')} type="button">14-day plan</button>
+          <button className="secondary" onClick={() => navigate('plan')} type="button">Six-week schedule</button>
           <button className="secondary" onClick={() => navigate('courses')} type="button">Course information</button>
           <button className="secondary" onClick={() => navigate('privacy')} type="button">Privacy and data</button>
           <button className="secondary" onClick={() => void onSignOut()} type="button">Sign out</button>

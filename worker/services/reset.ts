@@ -18,6 +18,6 @@ export async function resetPocProgress(user: SessionUser, env: Env): Promise<boo
   ])
 
   const context = await loadPlannerContext(user, env)
-  if (context) await savePlan(user, generateRevisionPlan(context, 14), env, context.today)
+  if (context) await savePlan(user, generateRevisionPlan(context), env, context.today)
   return true
 }

@@ -49,7 +49,7 @@ test('student completes a scheduled slot and unfinished coverage remains schedul
 
   await signIn(page, 'oliver', studentPassword)
   await page.goto('/?view=plan')
-  await expect(page.getByRole('heading', { name: 'Your next 14 days' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your next six weeks' })).toBeVisible()
   await page.getByRole('button', { name: /^(Build|Rebuild) schedule$/ }).click()
 
   const session = page.locator('.plan-session').filter({ has: page.getByRole('button', { name: 'Complete slot' }) }).first()

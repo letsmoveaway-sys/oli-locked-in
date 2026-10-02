@@ -4,6 +4,7 @@ import {
   calculateRemainingWorkload,
   calculateTopicPriority,
   generateRevisionPlan,
+  PLANNING_HORIZON_DAYS,
   replanAfterChange,
   type PlannerContext,
   type PlannerTopic,
@@ -56,7 +57,7 @@ describe('adaptive planner', () => {
       }],
     })
     const result = replanAfterChange('Session missed', base)
-    expect(result.message).toBe('Your plan has been adjusted.')
+    expect(result.message).toBe('Your six-week schedule has been adjusted.')
     expect(result.sessions.filter((session) => session.id === 'missed-1')).toHaveLength(1)
     expect(result.sessions.some((session) => session.status === 'planned' && session.topicId === 'topic-maths')).toBe(true)
   })
@@ -145,6 +146,13 @@ describe('adaptive planner', () => {
 
     expect(counts.every((count) => count > 0)).toBe(true)
     expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1)
+  })
+
+  it('builds a six-week schedule by default', () => {
+    const plan = generateRevisionPlan(context({ topics: [topic({ targetSessions: 100 })] }))
+      .filter((session) => session.source === 'generated')
+    expect(PLANNING_HORIZON_DAYS).toBe(42)
+    expect(plan.at(-1)?.scheduledAt.slice(0, 10)).toBe('2026-10-27')
   })
 
   it('schedules a follow-up while coverage points remain open', () => {

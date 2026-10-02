@@ -46,5 +46,5 @@ FROM subjects;
 INSERT OR IGNORE INTO settings (key, value_json, description)
 VALUES
   ('rag_thresholds', '{"redMax":49,"amberMax":74,"greenMax":100}', 'Configurable mastery RAG thresholds'),
-  ('planner_defaults', '{"sessionMinutes":35,"horizonDays":14}', 'Default planning window and session length'),
+  ('planner_defaults', '{"sessionMinutes":35,"horizonDays":42}', 'Default planning window and session length'),
   ('xp_awards', '{"plannedSession":10,"quiz":5,"redToAmber":20,"amberToGreen":30,"weeklyTarget":50}', 'Default XP awards');
